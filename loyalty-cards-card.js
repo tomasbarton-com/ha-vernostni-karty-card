@@ -45,11 +45,7 @@ const loadScanner   = () => loadScript('https://unpkg.com/html5-qrcode@2.3.8/htm
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 function getLogoUrl(store) {
-  // Support both new (logo_url from integration) and old (logo key → local path) formats
-  return store.logo_url
-    || store.logo_path
-    || (store.store_key ? `/local/loyalty-cards/logos/${store.store_key}.png` : null)
-    || (store.logo      ? `/local/loyalty-cards/logos/${store.logo}.png`      : null);
+  return store.logo_url || null;
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
