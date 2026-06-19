@@ -22,6 +22,8 @@ const FALLBACK_CATEGORY_LABELS = {
   fashion: 'Móda', fastfood: 'Fastfood', toys: 'Hračkářství', other: 'Ostatní',
 };
 
+const LAYOUT_KEY = 'loyalty-cards-layout';
+
 // ── External libs ─────────────────────────────────────────────────────────────
 
 const _scripts = {};
@@ -58,6 +60,11 @@ const ICON = {
   close:    `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`,
   location: `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`,
   image:    `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`,
+  // Switch TO flat (sections) — shown when in tabs mode
+  layoutFlat: `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>`,
+  // Switch TO tabs — shown when in flat mode
+  layoutTabs: `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V8h18v11zm0-13H3V5h10v1h8z"/></svg>`,
+  fullscreen:`<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`,
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -77,9 +84,9 @@ const STYLES = /* css */`
 /* ── Header ── */
 .header {
   display: flex; align-items: center;
-  padding: 10px 12px 10px 16px;
+  padding: 10px 8px 10px 16px;
   border-bottom: 1px solid var(--divider-color, #e0e0e0);
-  gap: 4px;
+  gap: 2px;
 }
 .header-title { flex: 1; font-size: 17px; font-weight: 500; color: var(--primary-text-color, #212121); }
 .btn-icon {
@@ -91,17 +98,35 @@ const STYLES = /* css */`
 .btn-icon:hover { background: var(--secondary-background-color, #f0f0f0); }
 .btn-icon.accent { color: var(--primary-color, #1976d2); }
 
-/* ── Store grid ── */
+/* ── Category tabs (tabs layout) ── */
+.cat-tabs {
+  display: flex; overflow-x: auto; border-bottom: 1px solid var(--divider-color, #e0e0e0);
+  scrollbar-width: none; flex-shrink: 0;
+}
+.cat-tabs::-webkit-scrollbar { display: none; }
+.cat-tab {
+  padding: 10px 14px; font-size: 13px; font-weight: 500; white-space: nowrap;
+  color: var(--secondary-text-color, #757575); border: none; background: none;
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color .1s, border-color .1s;
+}
+.cat-tab.active { color: var(--primary-color, #1976d2); border-bottom-color: var(--primary-color, #1976d2); }
+.cat-tab:hover:not(.active) { color: var(--primary-text-color, #212121); }
+
+/* ── Category section header (flat layout) ── */
+.cat-header {
+  padding: 12px 12px 4px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--secondary-text-color, #9e9e9e);
+}
+.cat-header:first-child { padding-top: 10px; }
+
+/* ── Store grid — always 2 columns ── */
 .store-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 8px; padding: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px; padding: 8px 12px 12px;
 }
-.empty-state {
-  text-align: center; padding: 36px 16px;
-  color: var(--secondary-text-color, #9e9e9e); font-size: 14px;
-}
-.empty-state .icon { font-size: 40px; display: block; margin-bottom: 8px; }
 
 /* ── Tile ── */
 .store-tile {
@@ -113,7 +138,7 @@ const STYLES = /* css */`
   user-select: none;
 }
 .store-tile:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.22); }
-.store-tile.no-cards { opacity: 0.48; }
+.store-tile.no-cards { opacity: 0.45; }
 
 .tile-logo {
   width: 36px; height: 36px; border-radius: 6px; object-fit: contain;
@@ -125,28 +150,30 @@ const STYLES = /* css */`
   display: flex; align-items: center; justify-content: center;
   font-size: 17px; font-weight: 700; margin-top: 14px;
 }
-.tile-name {
-  font-size: 11px; font-weight: 500; text-align: center;
-  word-break: break-word; line-height: 1.3;
-  max-width: 100%;
-}
+.tile-name { font-size: 11px; font-weight: 500; text-align: center; word-break: break-word; line-height: 1.3; }
 
-/* Badges on tile */
 .tile-count-badge {
   position: absolute; top: 4px; left: 5px;
-  background: rgba(0,0,0,.30); color: #fff;
+  background: rgba(0,0,0,.28); color: #fff;
   border-radius: 9px; font-size: 10px; font-weight: 700;
   padding: 1px 5px; min-width: 16px; text-align: center; line-height: 16px;
 }
 .tile-menu-btn {
   position: absolute; top: 3px; right: 3px;
   width: 22px; height: 22px; border-radius: 50%;
-  background: rgba(0,0,0,.22); border: none; cursor: pointer;
+  background: rgba(0,0,0,.20); border: none; cursor: pointer;
   color: #fff; display: flex; align-items: center; justify-content: center;
-  font-size: 13px; line-height: 1; padding: 0;
+  font-size: 14px; line-height: 1; padding: 0;
   transition: background .1s;
 }
-.tile-menu-btn:hover { background: rgba(0,0,0,.42); }
+.tile-menu-btn:hover { background: rgba(0,0,0,.40); }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 36px 16px;
+  color: var(--secondary-text-color, #9e9e9e); font-size: 14px;
+}
+.empty-state .icon { font-size: 40px; display: block; margin-bottom: 8px; }
 
 /* ── Modals ── */
 .modal-overlay {
@@ -161,30 +188,27 @@ const STYLES = /* css */`
   box-shadow: 0 -4px 28px rgba(0,0,0,.18);
   display: flex; flex-direction: column;
 }
-.modal-sheet.sheet-menu { max-height: 60vh; border-radius: 18px 18px 0 0; }
-
+.modal-sheet.sheet-menu { max-height: 60vh; }
 .modal-header {
-  display: flex; align-items: center; gap: 8px; padding: 14px 14px 12px;
-  border-bottom: 1px solid var(--divider-color, #e0e0e0);
-  flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px; padding: 14px 10px 12px 14px;
+  border-bottom: 1px solid var(--divider-color, #e0e0e0); flex-shrink: 0;
 }
-.modal-store-logo { width: 32px; height: 32px; border-radius: 6px; object-fit: contain; }
+.modal-store-logo { width: 32px; height: 32px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
 .modal-store-initials {
   width: 32px; height: 32px; border-radius: 6px;
   background: var(--primary-color, #1976d2);
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; color: #fff; flex-shrink: 0;
 }
-.modal-title { flex: 1; font-size: 16px; font-weight: 500; color: var(--primary-text-color, #212121); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
+.modal-title { flex: 1; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .modal-body { padding: 16px; flex: 1; overflow-y: auto; }
 .modal-footer {
   display: flex; gap: 8px; padding: 12px 16px;
-  border-top: 1px solid var(--divider-color, #e0e0e0);
-  flex-shrink: 0; background: var(--ha-card-background, #fff);
+  border-top: 1px solid var(--divider-color, #e0e0e0); flex-shrink: 0;
+  background: var(--ha-card-background, #fff);
 }
 
-/* ── Tabs ── */
+/* ── Barcode tabs ── */
 .tabs {
   display: flex; overflow-x: auto; border-bottom: 1px solid var(--divider-color, #e0e0e0);
   flex-shrink: 0; scrollbar-width: none;
@@ -192,22 +216,24 @@ const STYLES = /* css */`
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
   padding: 10px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
-  color: var(--secondary-text-color, #757575); white-space: nowrap; border: none;
-  background: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  color: var(--secondary-text-color, #757575); white-space: nowrap;
+  border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
   transition: color .1s, border-color .1s;
 }
 .tab.active { color: var(--primary-color, #1976d2); border-bottom-color: var(--primary-color, #1976d2); }
-.tab:hover:not(.active) { color: var(--primary-text-color, #212121); }
 
 /* ── Barcode view ── */
 .barcode-view { padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .barcode-wrap {
   background: #fff; border-radius: 10px; padding: 14px 10px;
   width: 100%; box-sizing: border-box;
-  display: flex; align-items: center; justify-content: center; min-height: 100px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 100px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  cursor: zoom-in; transition: box-shadow .15s;
 }
+.barcode-wrap:hover { box-shadow: 0 2px 10px rgba(0,0,0,.14); }
 .barcode-wrap canvas, .barcode-wrap svg { max-width: 100%; }
+.barcode-zoom-hint { font-size: 11px; color: var(--secondary-text-color, #bdbdbd); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
 .barcode-value { font-family: monospace; font-size: 14px; color: var(--secondary-text-color, #757575); }
 .card-notes {
   width: 100%; font-size: 13px; color: var(--primary-text-color, #212121);
@@ -248,8 +274,6 @@ const STYLES = /* css */`
 }
 .input-row { display: flex; gap: 8px; }
 .input-row .form-input { flex: 1; }
-
-/* ── Catalog picker ── */
 .catalog-category { margin-bottom: 14px; }
 .catalog-cat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--secondary-text-color, #9e9e9e); margin-bottom: 6px; }
 .catalog-items { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -261,8 +285,6 @@ const STYLES = /* css */`
 .catalog-chip:hover { border-color: var(--primary-color, #1976d2); color: var(--primary-color, #1976d2); }
 .catalog-chip.selected { background: var(--primary-color, #1976d2); color: #fff; border-color: var(--primary-color, #1976d2); }
 .catalog-chip img { width: 16px; height: 16px; border-radius: 3px; object-fit: contain; }
-
-/* ── Color picker ── */
 .color-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .color-swatch {
   width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
@@ -270,8 +292,6 @@ const STYLES = /* css */`
 }
 .color-swatch:hover { transform: scale(1.15); }
 .color-swatch.selected { border-color: var(--primary-text-color, #212121); transform: scale(1.15); }
-
-/* ── Logo ── */
 .logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .logo-preview { width: 56px; height: 56px; border-radius: 10px; object-fit: contain; border: 1px solid var(--divider-color, #e0e0e0); }
 .logo-initials-preview {
@@ -280,8 +300,6 @@ const STYLES = /* css */`
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; font-weight: 700; color: #fff;
 }
-
-/* ── Buttons ── */
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 18px; border-radius: 20px; border: none; cursor: pointer;
@@ -292,20 +310,14 @@ const STYLES = /* css */`
 .btn-secondary { background: var(--secondary-background-color, #efefef); color: var(--primary-text-color, #212121); }
 .btn-danger { background: #e53935; color: #fff; }
 .btn-full { width: 100%; justify-content: center; border-radius: 8px; padding: 11px; margin-bottom: 8px; }
-
-/* ── Locations ── */
 .location-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--divider-color, #e0e0e0); }
 .location-info { flex: 1; font-size: 13px; }
 .location-name { font-weight: 500; }
 .location-coords { font-family: monospace; font-size: 11px; color: var(--secondary-text-color, #9e9e9e); }
-
-/* ── Loading / Error ── */
 .loading { display: flex; align-items: center; justify-content: center; padding: 36px; gap: 12px; color: var(--secondary-text-color, #9e9e9e); font-size: 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { width: 22px; height: 22px; border: 3px solid var(--divider-color, #e0e0e0); border-top-color: var(--primary-color, #1976d2); border-radius: 50%; animation: spin .7s linear infinite; }
 .error-banner { background: #ffebee; color: #b71c1c; padding: 12px 16px; font-size: 13px; margin: 12px; border-radius: 8px; }
-
-/* ── Scanner ── */
 .scanner-wrap { margin-top: 8px; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 1; }
 `;
 
@@ -315,17 +327,21 @@ class LoyaltyCardsCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._hass        = null;
-    this._catalog     = null;
-    this._data        = null;
-    this._config      = {};
-    this._modal       = null;   // current modal name
-    this._md          = {};     // modal data
-    this._unsub       = null;
-    this._initialized = false;
-    this._error       = null;
-    this._scanner     = null;
-    this._scannerEl   = null;
+    this._hass          = null;
+    this._catalog       = null;
+    this._data          = null;
+    this._config        = {};
+    this._layout        = localStorage.getItem(LAYOUT_KEY) || 'flat'; // 'flat' | 'tabs'
+    this._activeCategory = null; // for tabs layout
+    this._modal         = null;
+    this._md            = {};
+    this._unsub         = null;
+    this._initialized   = false;
+    this._error         = null;
+    this._scanner       = null;
+    this._scannerEl     = null;
+    this._fullscreenEl  = null;
+    this._wakeLock      = null;
   }
 
   setConfig(config) { this._config = config || {}; }
@@ -375,6 +391,7 @@ class LoyaltyCardsCard extends HTMLElement {
     this._unsub?.then(fn => fn()).catch(() => {});
     this._unsub = null;
     this._destroyScanner();
+    this._closeFullscreen();
   }
 
   _callService(service, data) {
@@ -390,26 +407,68 @@ class LoyaltyCardsCard extends HTMLElement {
 
   _render() {
     this._destroyScanner();
-    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="card-root">${this._buildGrid()}</div>`;
+    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="card-root">${this._buildMain()}</div>`;
     this._bindRootEvents();
   }
 
-  _buildGrid() {
+  _buildMain() {
     if (this._error) return `<div class="error-banner">⚠️ ${this._error}</div>`;
-    const stores = this._data?.stores || [];
 
-    const inner = stores.length === 0
-      ? `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`
-      : `<div class="store-grid">${stores.map(s => this._buildTile(s)).join('')}</div>`;
-
-    return `
+    // Header
+    const layoutIcon = this._layout === 'flat' ? ICON.layoutTabs : ICON.layoutFlat;
+    const layoutTitle = this._layout === 'flat' ? 'Přepnout na záložky' : 'Přepnout na sekce';
+    const header = `
       <div class="header">
         <span class="header-title">Věrnostní karty</span>
+        <button class="btn-icon" data-action="toggle-layout" title="${layoutTitle}">${layoutIcon}</button>
         <button class="btn-icon accent" data-action="open-add-store" title="Přidat obchod">${ICON.plus}</button>
         <button class="btn-icon" data-action="open-settings" title="Nastavení">${ICON.settings}</button>
-      </div>
-      ${inner}`;
+      </div>`;
+
+    return header + (this._layout === 'tabs' ? this._buildTabs() : this._buildFlat());
   }
+
+  // ── Flat layout: categories as section headers ──
+
+  _buildFlat() {
+    const categories = this._categorize();
+    if (categories.length === 0) {
+      return `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
+    }
+    return categories.map(({ label, stores }) => `
+      <div class="cat-header">${esc(label)}</div>
+      <div class="store-grid">${stores.map(s => this._buildTile(s)).join('')}</div>
+    `).join('');
+  }
+
+  // ── Tabs layout: category tabs + filtered grid ──
+
+  _buildTabs() {
+    const categories = this._categorize();
+    if (categories.length === 0) {
+      return `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
+    }
+
+    // Ensure active category is valid
+    if (!this._activeCategory || !categories.find(c => c.key === this._activeCategory)) {
+      this._activeCategory = categories[0].key;
+    }
+
+    const tabs = `<div class="cat-tabs">
+      ${categories.map(({ key, label }) =>
+        `<button class="cat-tab${key === this._activeCategory ? ' active' : ''}" data-action="switch-category" data-cat="${key}">${esc(label)}</button>`
+      ).join('')}
+    </div>`;
+
+    const activeStores = categories.find(c => c.key === this._activeCategory)?.stores || [];
+    const grid = activeStores.length === 0
+      ? `<div class="empty-state" style="padding:24px"><p>Žádné obchody v této kategorii.</p></div>`
+      : `<div class="store-grid">${activeStores.map(s => this._buildTile(s)).join('')}</div>`;
+
+    return tabs + grid;
+  }
+
+  // ── Tile ──
 
   _buildTile(store) {
     const cards   = store.cards || [];
@@ -419,49 +478,76 @@ class LoyaltyCardsCard extends HTMLElement {
     const noCards = count === 0;
 
     const logoEl = logo
-      ? `<img class="tile-logo" src="${logo}" alt="${esc(store.name)}"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      ? `<img class="tile-logo" src="${logo}" alt="${esc(store.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
     const initialsEl = `<div class="tile-initials" style="${logo ? 'display:none' : ''}">${store.name[0].toUpperCase()}</div>`;
-    const countBadge = count > 0
-      ? `<div class="tile-count-badge">${count}</div>`
-      : '';
 
     return `
       <div class="store-tile${noCards ? ' no-cards' : ''}" data-action="open-barcode" data-id="${store.id}" style="background:${color}">
-        ${countBadge}
+        ${count > 0 ? `<div class="tile-count-badge">${count}</div>` : ''}
         <button class="tile-menu-btn" data-action="open-tile-menu" data-id="${store.id}" title="Možnosti">⋮</button>
         ${logoEl}${initialsEl}
         <span class="tile-name">${esc(store.name)}</span>
       </div>`;
   }
 
-  // ── Root event binding ──
+  // ── Root events ──
 
   _bindRootEvents() {
     this.shadowRoot.querySelector('.card-root')?.addEventListener('click', e => {
       const el = e.target.closest('[data-action]');
       if (!el) return;
       e.stopPropagation();
-      const id = el.dataset.id;
-      switch (el.dataset.action) {
-        case 'open-barcode':    return this._openBarcode(id);
-        case 'open-tile-menu':  return this._openModal('tile-menu',  { storeId: id });
-        case 'open-add-store':  return this._openModal('add-store',  { color: DEFAULT_COLORS[0] });
-        case 'open-settings':   return this._openModal('settings',   {});
+      const { action, id, cat } = el.dataset;
+      switch (action) {
+        case 'open-barcode':     return this._openBarcode(id);
+        case 'open-tile-menu':   return this._openModal('tile-menu', { storeId: id });
+        case 'open-add-store':   return this._openModal('add-store', { color: DEFAULT_COLORS[0] });
+        case 'open-settings':    return this._openModal('settings', {});
+        case 'toggle-layout':    return this._toggleLayout();
+        case 'switch-category':
+          this._activeCategory = cat;
+          this._render();
+          return;
       }
     });
+  }
+
+  _toggleLayout() {
+    this._layout = this._layout === 'flat' ? 'tabs' : 'flat';
+    localStorage.setItem(LAYOUT_KEY, this._layout);
+    this._activeCategory = null;
+    this._render();
   }
 
   _openBarcode(storeId) {
     const store = this._findStore(storeId);
     if (!store) return;
-    const cards = store.cards || [];
-    if (cards.length === 0) {
-      // No cards yet — open add-card modal directly
-      return this._openModal('add-card', { storeId });
-    }
+    if ((store.cards || []).length === 0) return this._openModal('add-card', { storeId });
     this._openModal('barcode', { storeId, tabIdx: 0 });
+  }
+
+  // ── Categorize stores ──
+
+  _categorize() {
+    const stores = this._data?.stores || [];
+    const byCategory = {};
+    for (const s of stores) {
+      const cat = s.category || 'other';
+      (byCategory[cat] = byCategory[cat] || []).push(s);
+    }
+    const labels = Object.keys(this._catalog?.category_labels || {}).length
+      ? this._catalog.category_labels : FALLBACK_CATEGORY_LABELS;
+
+    // Preserve catalog order, then append any extra categories
+    const catalogOrder = this._catalog?.stores
+      ? [...new Set(this._catalog.stores.map(s => s.category))]
+      : [];
+    const allCats = [...catalogOrder, ...Object.keys(byCategory)]
+      .filter((c, i, a) => a.indexOf(c) === i)
+      .filter(c => byCategory[c]?.length > 0);
+
+    return allCats.map(key => ({ key, label: labels[key] || key, stores: byCategory[key] }));
   }
 
   // ── Modal system ──
@@ -474,19 +560,13 @@ class LoyaltyCardsCard extends HTMLElement {
 
   _mountModal() {
     this.shadowRoot.querySelector('.modal-overlay')?.remove();
-
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = this._buildModal(this._modal);
     this.shadowRoot.querySelector('.card-root').appendChild(overlay);
-
     overlay.addEventListener('click', e => { if (e.target === overlay) this._closeModal(); });
     this._bindModalEvents(overlay);
-
-    if (this._modal === 'barcode') {
-      this._renderBarcodeInModal(overlay);
-    }
-
+    if (this._modal === 'barcode') this._renderBarcodeInModal(overlay);
     setTimeout(() => overlay.querySelector('input:not([type=hidden]), select, textarea')?.focus(), 60);
   }
 
@@ -513,13 +593,14 @@ class LoyaltyCardsCard extends HTMLElement {
   // ── Barcode popup ──
 
   _modalBarcode() {
-    const store   = this._findStore(this._md.storeId);
+    const store  = this._findStore(this._md.storeId);
     if (!store) return '';
-    const cards   = store.cards || [];
-    const tabIdx  = this._md.tabIdx ?? 0;
-    const card    = cards[tabIdx];
-    const logo    = getLogoUrl(store);
-    const logoEl  = logo
+    const cards  = store.cards || [];
+    const tabIdx = this._md.tabIdx ?? 0;
+    const card   = cards[tabIdx];
+    const logo   = getLogoUrl(store);
+
+    const logoEl = logo
       ? `<img class="modal-store-logo" src="${logo}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
     const initialsEl = `<div class="modal-store-initials" style="${logo ? 'display:none' : ''}">${store.name[0].toUpperCase()}</div>`;
@@ -535,13 +616,16 @@ class LoyaltyCardsCard extends HTMLElement {
         ${logoEl}${initialsEl}
         <span class="modal-title">${esc(store.name)}</span>
         <button class="btn-icon accent" data-action="open-add-card-from-barcode" title="Přidat kartu">${ICON.plus}</button>
-        <button class="btn-icon" data-action="open-store-menu-from-barcode" title="Možnosti">⋮</button>
-        <button class="btn-icon" data-action="close-modal" title="Zavřít">${ICON.close}</button>
+        <button class="btn-icon" data-action="open-store-menu-from-barcode" title="Možnosti obchodu">⋮</button>
+        <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
       </div>
       ${tabs}
       <div class="barcode-view">
         <div class="card-name-label">${card ? esc(card.name) : ''}</div>
-        <div class="barcode-wrap" id="barcode-container"><div class="spinner"></div></div>
+        <div class="barcode-wrap" id="barcode-container" title="Klepnutím zobrazit přes celou obrazovku">
+          <div class="spinner"></div>
+        </div>
+        <div class="barcode-zoom-hint">${ICON.fullscreen} Klepnutím přes celou obrazovku</div>
         <div class="barcode-value">${card ? card.barcode : ''}</div>
         ${card?.notes ? `<div class="card-notes">${esc(card.notes)}</div>` : ''}
       </div>
@@ -552,10 +636,10 @@ class LoyaltyCardsCard extends HTMLElement {
     </div>`;
   }
 
-  // ── Tile menu (⋮) ──
+  // ── Tile menu ──
 
   _modalTileMenu() {
-    const store = this._findStore(this._md.storeId);
+    const store  = this._findStore(this._md.storeId);
     if (!store) return '';
     const logo   = getLogoUrl(store);
     const logoEl = logo
@@ -583,9 +667,7 @@ class LoyaltyCardsCard extends HTMLElement {
     const catalog = this._catalog || { stores: [], category_labels: {} };
     const labels  = Object.keys(catalog.category_labels).length ? catalog.category_labels : FALLBACK_CATEGORY_LABELS;
     const byCategory = {};
-    for (const s of catalog.stores) {
-      (byCategory[s.category] = byCategory[s.category] || []).push(s);
-    }
+    for (const s of catalog.stores) (byCategory[s.category] = byCategory[s.category] || []).push(s);
     const catalogHTML = Object.entries(byCategory).map(([cat, stores]) => `
       <div class="catalog-category">
         <div class="catalog-cat-label">${labels[cat] || cat}</div>
@@ -634,7 +716,7 @@ class LoyaltyCardsCard extends HTMLElement {
   _modalEditStore() {
     const store = this._findStore(this._md.storeId);
     if (!store) return '';
-    const logo    = getLogoUrl(store);
+    const logo = getLogoUrl(store);
     const curColor = store.tile_color || DEFAULT_COLORS[0];
     return `<div class="modal-sheet">
       <div class="modal-header">
@@ -644,7 +726,7 @@ class LoyaltyCardsCard extends HTMLElement {
       <div class="modal-body">
         <div class="logo-row">
           ${logo
-            ? `<img class="logo-preview" src="${logo}" alt="${esc(store.name)}">`
+            ? `<img class="logo-preview" src="${logo}">`
             : `<div class="logo-initials-preview">${store.name[0].toUpperCase()}</div>`}
           <button class="btn btn-secondary" data-action="open-logo-from-edit">Změnit logo</button>
         </div>
@@ -796,15 +878,16 @@ class LoyaltyCardsCard extends HTMLElement {
         <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
       </div>
       <div class="modal-body">
-        ${locs.map((loc, i) => `
-          <div class="location-item">
-            <div class="location-info">
-              <div class="location-name">${esc(loc.label || `Lokace ${i+1}`)}</div>
-              <div class="location-coords">${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)} · ${loc.radius_m||300} m</div>
-            </div>
-            <button class="btn-icon" data-action="delete-location" data-idx="${i}">${ICON.trash}</button>
-          </div>`).join('')}
-        ${locs.length === 0 ? `<p style="color:var(--secondary-text-color);font-size:13px">Žádné lokace.</p>` : ''}
+        ${locs.length === 0
+          ? `<p style="color:var(--secondary-text-color);font-size:13px">Žádné lokace.</p>`
+          : locs.map((loc, i) => `
+            <div class="location-item">
+              <div class="location-info">
+                <div class="location-name">${esc(loc.label || `Lokace ${i+1}`)}</div>
+                <div class="location-coords">${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)} · ${loc.radius_m||300} m</div>
+              </div>
+              <button class="btn-icon" data-action="delete-location" data-idx="${i}">${ICON.trash}</button>
+            </div>`).join('')}
         <hr style="border:none;border-top:1px solid var(--divider-color,#e0e0e0);margin:12px 0">
         <div class="form-field">
           <label class="form-label">Přidat lokaci</label>
@@ -867,7 +950,6 @@ class LoyaltyCardsCard extends HTMLElement {
       this._handleModalAction(el.dataset.action, el, overlay);
     });
 
-    // Catalog chip selection
     overlay.querySelectorAll('.catalog-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         overlay.querySelectorAll('.catalog-chip').forEach(c => c.classList.remove('selected'));
@@ -880,7 +962,6 @@ class LoyaltyCardsCard extends HTMLElement {
       });
     });
 
-    // Catalog search filter
     overlay.querySelector('#catalog-search')?.addEventListener('input', e => {
       const q = e.target.value.toLowerCase();
       overlay.querySelectorAll('.catalog-chip').forEach(ch => {
@@ -891,7 +972,6 @@ class LoyaltyCardsCard extends HTMLElement {
       });
     });
 
-    // Color swatches
     overlay.querySelectorAll('.color-swatch').forEach(sw => {
       sw.addEventListener('click', () => {
         overlay.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
@@ -900,15 +980,11 @@ class LoyaltyCardsCard extends HTMLElement {
       });
     });
 
-    // Logo file preview
     overlay.querySelector('#logo-file')?.addEventListener('change', e => {
       const file = e.target.files[0];
       if (!file) return;
       const r = new FileReader();
-      r.onload = ev => {
-        const img = overlay.querySelector('#logo-preview');
-        if (img?.tagName === 'IMG') img.src = ev.target.result;
-      };
+      r.onload = ev => { const img = overlay.querySelector('#logo-preview'); if (img?.tagName === 'IMG') img.src = ev.target.result; };
       r.readAsDataURL(file);
     });
   }
@@ -917,21 +993,23 @@ class LoyaltyCardsCard extends HTMLElement {
     switch (action) {
       case 'close-modal': return this._closeModal();
 
-      // Barcode popup actions
       case 'switch-tab':
         this._md.tabIdx = parseInt(el.dataset.idx);
-        this._mountModal();
-        return;
+        return this._mountModal();
+
       case 'open-add-card-from-barcode':
         return this._openModal('add-card', { storeId: this._md.storeId });
+
       case 'open-store-menu-from-barcode':
         return this._openModal('tile-menu', { storeId: this._md.storeId });
+
       case 'open-edit-card-from-barcode': {
         const store = this._findStore(this._md.storeId);
         const card  = store?.cards?.[this._md.tabIdx ?? 0];
         if (card) this._openModal('edit-card', { storeId: this._md.storeId, cardId: card.id });
         return;
       }
+
       case 'delete-card-from-barcode': {
         const store = this._findStore(this._md.storeId);
         const card  = store?.cards?.[this._md.tabIdx ?? 0];
@@ -939,44 +1017,26 @@ class LoyaltyCardsCard extends HTMLElement {
         return;
       }
 
-      // Tile menu actions
-      case 'menu-add-card':
-        return this._openModal('add-card', { storeId: this._md.storeId });
-      case 'menu-edit-store':
-        return this._openModal('edit-store', { storeId: this._md.storeId });
-      case 'menu-logo':
-        return this._openModal('logo', { storeId: this._md.storeId });
-      case 'menu-locations':
-        return this._openModal('locations', { storeId: this._md.storeId });
-      case 'menu-delete-store':
-        return this._doDeleteStore(this._md.storeId);
+      case 'menu-add-card':     return this._openModal('add-card',   { storeId: this._md.storeId });
+      case 'menu-edit-store':   return this._openModal('edit-store', { storeId: this._md.storeId });
+      case 'menu-logo':         return this._openModal('logo',       { storeId: this._md.storeId });
+      case 'menu-locations':    return this._openModal('locations',  { storeId: this._md.storeId });
+      case 'menu-delete-store': return this._doDeleteStore(this._md.storeId);
 
-      // Edit store actions
-      case 'open-logo-from-edit':
-        return this._openModal('logo', { storeId: this._md.storeId });
-      case 'save-edit-store':
-        return this._doEditStore(overlay);
+      case 'open-logo-from-edit': return this._openModal('logo', { storeId: this._md.storeId });
 
-      // Add/save actions
-      case 'save-add-store':  return this._doAddStore(overlay);
-      case 'save-add-card':   return this._doAddCard(overlay);
-      case 'save-edit-card':  return this._doEditCard(overlay);
-
-      // Logo
-      case 'download-logo':   return this._doDownloadLogo(overlay);
-      case 'upload-logo':     return this._doUploadLogo(overlay);
-      case 'delete-logo':     return this._doDeleteLogo();
-
-      // Locations
-      case 'add-location':    return this._doAddLocation(overlay);
-      case 'delete-location': return this._doDeleteLocation(parseInt(el.dataset.idx));
-
-      // Settings
-      case 'save-settings':   return this._doSaveSettings(overlay);
-
-      // Scanner
-      case 'start-scan':      return this._startScan(overlay);
-      case 'stop-scan':       return this._stopScan(overlay);
+      case 'save-add-store':   return this._doAddStore(overlay);
+      case 'save-edit-store':  return this._doEditStore(overlay);
+      case 'save-add-card':    return this._doAddCard(overlay);
+      case 'save-edit-card':   return this._doEditCard(overlay);
+      case 'download-logo':    return this._doDownloadLogo(overlay);
+      case 'upload-logo':      return this._doUploadLogo(overlay);
+      case 'delete-logo':      return this._doDeleteLogo();
+      case 'add-location':     return this._doAddLocation(overlay);
+      case 'delete-location':  return this._doDeleteLocation(parseInt(el.dataset.idx));
+      case 'save-settings':    return this._doSaveSettings(overlay);
+      case 'start-scan':       return this._startScan(overlay);
+      case 'stop-scan':        return this._stopScan(overlay);
     }
   }
 
@@ -990,8 +1050,15 @@ class LoyaltyCardsCard extends HTMLElement {
 
     const container = overlay.querySelector('#barcode-container');
     if (!container) return;
-    container.innerHTML = '';
 
+    await this._renderBarcodeInElement(card, container, false);
+
+    // Fullscreen on click
+    container.addEventListener('click', () => this._openFullscreenBarcode(card));
+  }
+
+  async _renderBarcodeInElement(card, container, large = false) {
+    container.innerHTML = '';
     const fmt = card.barcode_type || 'CODE_128';
 
     try {
@@ -1000,23 +1067,84 @@ class LoyaltyCardsCard extends HTMLElement {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         container.appendChild(svg);
         // eslint-disable-next-line no-undef
-        JsBarcode(svg, card.barcode, { format: JSBARCODE_FORMAT[fmt], displayValue: false, width: 2, height: 80, margin: 6 });
+        JsBarcode(svg, card.barcode, {
+          format: JSBARCODE_FORMAT[fmt],
+          displayValue: large,
+          width: large ? 3 : 2,
+          height: large ? 130 : 80,
+          margin: large ? 12 : 6,
+          fontSize: 16,
+        });
+        if (large) svg.style.cssText = 'max-width:90vw;max-height:70vh';
       } else {
         await loadQrCode();
         const canvas = document.createElement('canvas');
         container.appendChild(canvas);
+        const size = large ? Math.min(window.innerWidth, window.innerHeight) * 0.8 : 200;
         // eslint-disable-next-line no-undef
-        await QRCode.toCanvas(canvas, card.barcode, { width: 200, margin: 2 });
-        if (fmt !== 'QR_CODE') {
+        await QRCode.toCanvas(canvas, card.barcode, { width: Math.min(size, 400), margin: 2 });
+        if (large) canvas.style.cssText = 'max-width:90vw;max-height:70vh';
+        if (large && fmt !== 'QR_CODE') {
           const note = document.createElement('div');
           note.style.cssText = 'font-size:11px;color:#9e9e9e;margin-top:4px;text-align:center';
           note.textContent = `(zobrazeno jako QR — formát ${fmt})`;
           container.appendChild(note);
         }
       }
+      if (large) {
+        const val = document.createElement('div');
+        val.style.cssText = 'font-family:monospace;font-size:16px;color:#555;margin-top:8px;letter-spacing:.05em';
+        val.textContent = card.barcode;
+        container.appendChild(val);
+      }
     } catch (e) {
       container.innerHTML = `<div style="color:#c62828;font-size:13px;text-align:center">Nelze vykreslit: ${e.message}</div>`;
     }
+  }
+
+  // ── Fullscreen barcode ──
+
+  async _openFullscreenBarcode(card) {
+    await this._closeFullscreen();
+
+    const el = document.createElement('div');
+    el.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:99999', 'background:#ffffff',
+      'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
+      'cursor:pointer', 'touch-action:manipulation',
+    ].join(';');
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px';
+    el.appendChild(wrap);
+
+    const hint = document.createElement('div');
+    hint.style.cssText = 'position:absolute;bottom:20px;left:0;right:0;text-align:center;font-size:12px;color:#bdbdbd;font-family:sans-serif';
+    hint.textContent = 'Klepnutím zavřít';
+    el.appendChild(hint);
+
+    document.body.appendChild(el);
+    this._fullscreenEl = el;
+
+    // Screen Wake Lock — prevents display from dimming
+    try { this._wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+
+    // Try landscape orientation lock
+    try { await screen.orientation.lock('landscape'); } catch {}
+
+    await this._renderBarcodeInElement(card, wrap, true);
+
+    el.addEventListener('click', () => this._closeFullscreen());
+  }
+
+  async _closeFullscreen() {
+    if (this._wakeLock) {
+      try { await this._wakeLock.release(); } catch {}
+      this._wakeLock = null;
+    }
+    try { screen.orientation.unlock(); } catch {}
+    this._fullscreenEl?.remove();
+    this._fullscreenEl = null;
   }
 
   // ── Service calls ──
@@ -1059,17 +1187,14 @@ class LoyaltyCardsCard extends HTMLElement {
 
   async _doAddCard(overlay) {
     const storeId = this._md.storeId;
-    if (!storeId) return;
     const name    = overlay.querySelector('#card-name')?.value?.trim();
     const barcode = overlay.querySelector('#card-barcode')?.value?.trim();
     if (!name || !barcode) return alert('Vyplň název a kód karty.');
     await this._callService('add_card', {
-      store_id:     storeId,
-      name, barcode,
+      store_id: storeId, name, barcode,
       barcode_type: overlay.querySelector('#card-type')?.value || 'CODE_128',
-      notes:        overlay.querySelector('#card-notes')?.value || '',
+      notes: overlay.querySelector('#card-notes')?.value || '',
     });
-    // After adding, open barcode popup for this store
     this._closeModal();
     await this._loadData();
     this._render();
@@ -1083,15 +1208,13 @@ class LoyaltyCardsCard extends HTMLElement {
     const barcode = overlay.querySelector('#card-barcode')?.value?.trim();
     if (!name || !barcode) return alert('Vyplň název a kód karty.');
     await this._callService('update_card', {
-      card_id:      cardId,
-      name, barcode,
+      card_id: cardId, name, barcode,
       barcode_type: overlay.querySelector('#card-type')?.value,
-      notes:        overlay.querySelector('#card-notes')?.value || '',
+      notes: overlay.querySelector('#card-notes')?.value || '',
     });
     this._closeModal();
     await this._loadData();
     this._render();
-    // Reopen barcode popup
     this._openBarcode(storeId);
   }
 
@@ -1120,10 +1243,7 @@ class LoyaltyCardsCard extends HTMLElement {
     const file = overlay.querySelector('#logo-file')?.files?.[0];
     if (!file) return alert('Vyber soubor.');
     const data_url = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = e => res(e.target.result);
-      r.onerror = rej;
-      r.readAsDataURL(file);
+      const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
     });
     await this._callService('upload_logo', { store_id: store.id, data_url });
     this._closeModal();
@@ -1160,13 +1280,12 @@ class LoyaltyCardsCard extends HTMLElement {
   }
 
   async _doSaveSettings(overlay) {
-    const trackers = (overlay.querySelector('#s-trackers')?.value || '')
-      .split(',').map(s => s.trim()).filter(Boolean);
+    const trackers = (overlay.querySelector('#s-trackers')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
     await this._callService('update_settings', {
-      device_trackers:              trackers,
-      global_proximity_m:           parseInt(overlay.querySelector('#s-proximity')?.value) || 300,
-      notification_dwell_minutes:   parseInt(overlay.querySelector('#s-dwell')?.value) || 7,
-      notifications_enabled:        overlay.querySelector('#s-notif')?.checked ?? true,
+      device_trackers:            trackers,
+      global_proximity_m:         parseInt(overlay.querySelector('#s-proximity')?.value) || 300,
+      notification_dwell_minutes: parseInt(overlay.querySelector('#s-dwell')?.value) || 7,
+      notifications_enabled:      overlay.querySelector('#s-notif')?.checked ?? true,
     });
     this._closeModal();
   }
@@ -1181,14 +1300,11 @@ class LoyaltyCardsCard extends HTMLElement {
       await loadScanner();
       const shadowEl = overlay.querySelector('#scan-container');
       const rect = shadowEl?.getBoundingClientRect() || { top: 100, left: 0, width: 300 };
-
       const host = document.createElement('div');
       host.id = `lcc-scan-${Date.now()}`;
-      host.style.cssText = `position:fixed;z-index:99999;background:#000;border-radius:8px;overflow:hidden;
-        top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.width}px`;
+      host.style.cssText = `position:fixed;z-index:99999;background:#000;border-radius:8px;overflow:hidden;top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.width}px`;
       document.body.appendChild(host);
       this._scannerEl = host;
-
       // eslint-disable-next-line no-undef
       const scanner = new Html5Qrcode(host.id);
       this._scanner = scanner;
@@ -1219,9 +1335,7 @@ class LoyaltyCardsCard extends HTMLElement {
 
   // ── Helpers ──
 
-  _findStore(id) {
-    return this._data?.stores?.find(s => s.id === id) || null;
-  }
+  _findStore(id) { return this._data?.stores?.find(s => s.id === id) || null; }
 
   _catOptions(selected) {
     const labels = Object.keys(this._catalog?.category_labels||{}).length
