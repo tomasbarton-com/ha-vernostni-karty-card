@@ -274,17 +274,35 @@ const STYLES = /* css */`
 }
 .input-row { display: flex; gap: 8px; }
 .input-row .form-input { flex: 1; }
-.catalog-category { margin-bottom: 14px; }
-.catalog-cat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--secondary-text-color, #9e9e9e); margin-bottom: 6px; }
-.catalog-items { display: flex; flex-wrap: wrap; gap: 6px; }
-.catalog-chip {
-  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
-  border: 1px solid var(--divider-color, #e0e0e0); border-radius: 20px;
-  cursor: pointer; font-size: 13px; transition: all .1s; user-select: none;
+.catalog-dropdown { position: relative; }
+.catalog-dropdown-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--ha-card-background, #fff);
+  border: 1px solid var(--divider-color, #e0e0e0); border-radius: 8px;
+  max-height: 260px; overflow-y: auto; z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,.14); display: none; scrollbar-width: thin;
 }
-.catalog-chip:hover { border-color: var(--primary-color, #1976d2); color: var(--primary-color, #1976d2); }
-.catalog-chip.selected { background: var(--primary-color, #1976d2); color: #fff; border-color: var(--primary-color, #1976d2); }
-.catalog-chip img { width: 16px; height: 16px; border-radius: 3px; object-fit: contain; }
+.catalog-dropdown-list.open { display: block; }
+.catalog-group-header {
+  padding: 6px 10px 4px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--secondary-text-color, #9e9e9e);
+  background: var(--secondary-background-color, #f5f5f5); position: sticky; top: 0;
+}
+.catalog-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; font-size: 13px;
+  color: var(--primary-text-color, #212121); transition: background .1s;
+}
+.catalog-option:hover { background: var(--secondary-background-color, #f0f0f0); }
+.catalog-option.selected { background: rgba(25,118,210,.1); color: var(--primary-color, #1976d2); }
+.catalog-option-logo { width: 22px; height: 22px; border-radius: 4px; object-fit: contain; flex-shrink: 0; }
+.catalog-option-initial {
+  width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0;
+  background: var(--primary-color, #1976d2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+}
 .color-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .color-swatch {
   width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
@@ -668,28 +686,35 @@ class LoyaltyCardsCard extends HTMLElement {
     const labels  = Object.keys(catalog.category_labels).length ? catalog.category_labels : FALLBACK_CATEGORY_LABELS;
     const byCategory = {};
     for (const s of catalog.stores) (byCategory[s.category] = byCategory[s.category] || []).push(s);
-    const catalogHTML = Object.entries(byCategory).map(([cat, stores]) => `
-      <div class="catalog-category">
-        <div class="catalog-cat-label">${labels[cat] || cat}</div>
-        <div class="catalog-items">${stores.map(s => {
-          const logo = getLogoUrl(s);
-          return `<div class="catalog-chip" data-key="${s.key}" data-name="${esc(s.name)}" data-category="${s.category}">
-            ${logo ? `<img src="${logo}" onerror="this.style.display='none'">` : ''}
-            ${esc(s.name)}</div>`;
-        }).join('')}</div>
-      </div>`).join('');
-    const curColor = this._md.color || DEFAULT_COLORS[0];
 
+    const dropdownHTML = Object.entries(byCategory).map(([cat, stores]) => `
+      <div class="catalog-group" data-cat="${cat}">
+        <div class="catalog-group-header">${esc(labels[cat] || cat)}</div>
+        ${stores.map(s => {
+          const logo = getLogoUrl(s);
+          return `<div class="catalog-option" data-key="${esc(s.key)}" data-name="${esc(s.name)}" data-category="${esc(s.category)}">
+            ${logo
+              ? `<img class="catalog-option-logo" src="${logo}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="catalog-option-initial" style="display:none">${s.name[0].toUpperCase()}</div>`
+              : `<div class="catalog-option-initial">${s.name[0].toUpperCase()}</div>`}
+            <span>${esc(s.name)}</span>
+          </div>`;
+        }).join('')}
+      </div>`).join('');
+
+    const curColor = this._md.color || DEFAULT_COLORS[0];
     return `<div class="modal-sheet">
       <div class="modal-header">
         <span class="modal-title">Přidat obchod</span>
         <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
       </div>
       <div class="modal-body">
-        ${catalogHTML ? `<div class="form-field">
+        ${dropdownHTML ? `<div class="form-field">
           <label class="form-label">Vybrat z katalogu</label>
-          <input class="form-input" id="catalog-search" placeholder="Hledat…" type="search" autocomplete="off">
-        </div>${catalogHTML}<hr style="margin:12px 0;border:none;border-top:1px solid var(--divider-color,#e0e0e0)">` : ''}
+          <div class="catalog-dropdown">
+            <input class="form-input" id="catalog-dropdown-input" placeholder="Hledat obchod…" autocomplete="off">
+            <div class="catalog-dropdown-list" id="catalog-dropdown-list">${dropdownHTML}</div>
+          </div>
+        </div>` : ''}
         <div class="form-field">
           <label class="form-label">Název *</label>
           <input class="form-input" id="store-name" placeholder="Název obchodu">
@@ -945,32 +970,42 @@ class LoyaltyCardsCard extends HTMLElement {
   _bindModalEvents(overlay) {
     overlay.addEventListener('click', e => {
       const el = e.target.closest('[data-action]');
-      if (!el || el.classList.contains('catalog-chip')) return;
+      if (!el) return;
       e.stopPropagation();
       this._handleModalAction(el.dataset.action, el, overlay);
     });
 
-    overlay.querySelectorAll('.catalog-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        overlay.querySelectorAll('.catalog-chip').forEach(c => c.classList.remove('selected'));
-        chip.classList.add('selected');
-        const n = overlay.querySelector('#store-name');
-        const c = overlay.querySelector('#store-category');
-        if (n) n.value = chip.dataset.name || '';
-        if (c) c.value = chip.dataset.category || 'other';
-        this._md.storeKey = chip.dataset.key || null;
+    // Catalog searchable dropdown
+    const dropInput = overlay.querySelector('#catalog-dropdown-input');
+    const dropList  = overlay.querySelector('#catalog-dropdown-list');
+    if (dropInput && dropList) {
+      dropInput.addEventListener('focus', () => dropList.classList.add('open'));
+      dropInput.addEventListener('blur',  () => setTimeout(() => dropList.classList.remove('open'), 150));
+      dropInput.addEventListener('input', () => {
+        const q = dropInput.value.toLowerCase();
+        dropList.classList.add('open');
+        dropList.querySelectorAll('.catalog-option').forEach(opt => {
+          opt.style.display = (opt.dataset.name || '').toLowerCase().includes(q) ? '' : 'none';
+        });
+        dropList.querySelectorAll('.catalog-group').forEach(grp => {
+          grp.style.display = [...grp.querySelectorAll('.catalog-option')].some(o => o.style.display !== 'none') ? '' : 'none';
+        });
       });
-    });
-
-    overlay.querySelector('#catalog-search')?.addEventListener('input', e => {
-      const q = e.target.value.toLowerCase();
-      overlay.querySelectorAll('.catalog-chip').forEach(ch => {
-        ch.style.display = ch.dataset.name?.toLowerCase().includes(q) ? '' : 'none';
+      dropList.querySelectorAll('.catalog-option').forEach(opt => {
+        opt.addEventListener('mousedown', e => e.preventDefault()); // keep input focused
+        opt.addEventListener('click', () => {
+          dropList.querySelectorAll('.catalog-option').forEach(o => o.classList.remove('selected'));
+          opt.classList.add('selected');
+          dropInput.value = opt.dataset.name || '';
+          dropList.classList.remove('open');
+          const n = overlay.querySelector('#store-name');
+          const c = overlay.querySelector('#store-category');
+          if (n) n.value = opt.dataset.name || '';
+          if (c) c.value = opt.dataset.category || 'other';
+          this._md.storeKey = opt.dataset.key || null;
+        });
       });
-      overlay.querySelectorAll('.catalog-category').forEach(cat => {
-        cat.style.display = [...cat.querySelectorAll('.catalog-chip')].some(c => c.style.display !== 'none') ? '' : 'none';
-      });
-    });
+    }
 
     overlay.querySelectorAll('.color-swatch').forEach(sw => {
       sw.addEventListener('click', () => {
