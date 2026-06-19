@@ -152,10 +152,10 @@ const STYLES = /* css */`
 
 /* ── Tile ── */
 .store-tile {
-  border-radius: 10px; padding: 8px 6px 10px;
+  border-radius: 10px; padding: 5px 4px 7px;
   cursor: pointer; position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  min-height: 96px; color: #fff;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-height: 90px; color: #fff;
   transition: transform .15s, box-shadow .15s, opacity .15s;
   user-select: none;
 }
@@ -163,14 +163,14 @@ const STYLES = /* css */`
 .store-tile.no-cards { opacity: 0.45; }
 
 .tile-logo {
-  width: 46px; height: 46px; border-radius: 8px; object-fit: contain;
-  background: rgba(255,255,255,.15); margin-top: 16px;
+  width: 56px; height: 56px; border-radius: 8px; object-fit: contain;
+  background: rgba(255,255,255,.15); margin-top: 8px;
 }
 .tile-initials {
-  width: 46px; height: 46px; border-radius: 8px;
+  width: 56px; height: 56px; border-radius: 8px;
   background: rgba(255,255,255,.22);
   display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 700; margin-top: 16px;
+  font-size: 26px; font-weight: 700; margin-top: 8px;
 }
 .tile-name { font-size: 11px; font-weight: 500; text-align: center; word-break: break-word; line-height: 1.3; }
 
@@ -211,6 +211,7 @@ const STYLES = /* css */`
   display: flex; flex-direction: column;
 }
 .modal-sheet.sheet-menu { max-height: 60vh; }
+.modal-sheet.sheet-tall { max-height: 96vh; }
 .modal-header {
   display: flex; align-items: center; gap: 8px; padding: 14px 10px 12px 14px;
   border-bottom: 1px solid var(--divider-color, #e0e0e0); flex-shrink: 0;
@@ -502,7 +503,6 @@ class LoyaltyCardsCard extends HTMLElement {
       <button class="btn-icon" data-action="open-search" title="Hledat">${ICON.search}</button>
       <button class="btn-icon" data-action="toggle-layout" title="${layoutTitle}">${layoutIcon}</button>
       <button class="btn-icon accent" data-action="open-add-store" title="Přidat obchod">${ICON.plus}</button>
-      <button class="btn-icon" data-action="open-settings" title="Nastavení">${ICON.settings}</button>
     </div>`;
   }
 
@@ -770,6 +770,7 @@ class LoyaltyCardsCard extends HTMLElement {
       <div class="menu-item" data-action="menu-edit-store">${ICON.edit} Upravit obchod</div>
       <div class="menu-item" data-action="menu-logo">${ICON.image} Správa loga</div>
       <div class="menu-item" data-action="menu-locations">${ICON.location} Lokace</div>
+      <div class="menu-item" data-action="menu-settings">${ICON.settings} Nastavení</div>
       <div class="menu-item danger" data-action="menu-delete-store">${ICON.trash} Smazat obchod</div>
     </div>`;
   }
@@ -797,7 +798,7 @@ class LoyaltyCardsCard extends HTMLElement {
       </div>`).join('');
 
     const curColor = this._md.color || DEFAULT_COLORS[0];
-    return `<div class="modal-sheet">
+    return `<div class="modal-sheet sheet-tall">
       <div class="modal-header">
         <span class="modal-title">Přidat obchod</span>
         <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
@@ -1106,10 +1107,10 @@ class LoyaltyCardsCard extends HTMLElement {
           opt.classList.add('selected');
           dropInput.value = opt.dataset.name || '';
           dropList.classList.remove('open');
-          // Fill only name + storeKey; do not auto-change category (handled by integration)
           const n = overlay.querySelector('#store-name');
           if (n) n.value = opt.dataset.name || '';
-          this._md.storeKey = opt.dataset.key || null;
+          this._md.storeKey      = opt.dataset.key      || null;
+          this._md.storeCategory = opt.dataset.category || null;
           // Extract dominant color from logo
           const logo = opt.dataset.logo;
           if (logo) {
@@ -1185,6 +1186,7 @@ class LoyaltyCardsCard extends HTMLElement {
       case 'menu-edit-store':   return this._openModal('edit-store', { storeId: this._md.storeId });
       case 'menu-logo':         return this._openModal('logo',       { storeId: this._md.storeId });
       case 'menu-locations':    return this._openModal('locations',  { storeId: this._md.storeId });
+      case 'menu-settings':     return this._openModal('settings',   {});
       case 'menu-delete-store': return this._doDeleteStore(this._md.storeId);
 
       case 'open-logo-from-edit': return this._openModal('logo', { storeId: this._md.storeId });
@@ -1308,7 +1310,8 @@ class LoyaltyCardsCard extends HTMLElement {
       name,
       tile_color: overlay.querySelector('#store-color')?.value || DEFAULT_COLORS[0],
     };
-    if (this._md.storeKey) data.store_key = this._md.storeKey;
+    if (this._md.storeKey)      data.store_key = this._md.storeKey;
+    if (this._md.storeCategory) data.category  = this._md.storeCategory;
     await this._callService('add_store', data);
     this._closeModal();
   }
@@ -1528,8 +1531,8 @@ class LoyaltyCardsCard extends HTMLElement {
           if (input) input.value = decoded;
           const sel = overlay.querySelector('#card-type');
           if (sel) sel.value = detectBarcodeType(decoded);
-        } catch {
-          alert('Kód v obrázku nebyl nalezen.');
+        } catch (e) {
+          alert(`Kód v obrázku nebyl nalezen.\n${e?.message || e}`);
         }
       });
       fileInput.click();
