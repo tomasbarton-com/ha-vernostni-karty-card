@@ -24,6 +24,23 @@ const FALLBACK_CATEGORY_LABELS = {
 
 const LAYOUT_KEY = 'loyalty-cards-layout';
 
+// html5-qrcode format number → our type key
+const HTML5QR_FORMAT = {
+  0: 'QR_CODE', 1: 'AZTEC', 3: 'CODE_39', 5: 'CODE_128',
+  6: 'DATA_MATRIX', 8: 'ITF', 9: 'EAN_13', 10: 'EAN_8',
+  11: 'PDF_417', 14: 'UPC_A', 15: 'UPC_E',
+};
+
+function detectBarcodeType(value) {
+  const v = String(value).replace(/\s/g, '');
+  if (/^\d{13}$/.test(v)) return 'EAN_13';
+  if (/^\d{8}$/.test(v))  return 'EAN_8';
+  if (/^\d{12}$/.test(v)) return 'UPC_A';
+  if (/^\d{6}$/.test(v))  return 'UPC_E';
+  if (/^\d{14}$/.test(v)) return 'ITF';
+  return 'CODE_128';
+}
+
 // ── External libs ─────────────────────────────────────────────────────────────
 
 const _scripts = {};
@@ -53,18 +70,18 @@ function getLogoUrl(store) {
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 const ICON = {
-  plus:     `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`,
-  settings: `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.32.07-.64.07-.97s-.03-.66-.07-1l2.15-1.68a.5.5 0 00.11-.61l-2.04-3.53a.5.5 0 00-.59-.22l-2.54 1.02a7.4 7.4 0 00-1.67-.97l-.38-2.7A.49.49 0 0014 2h-4a.49.49 0 00-.49.42l-.38 2.7c-.61.25-1.17.59-1.67.97L4.92 5.07a.49.49 0 00-.59.22L2.29 8.82a.49.49 0 00.11.61L4.55 11.1c-.04.33-.07.66-.07 1s.03.66.07.97l-2.15 1.7a.49.49 0 00-.11.61l2.04 3.53c.11.22.36.3.59.22l2.53-1.02c.5.38 1.06.71 1.67.97l.38 2.7c.07.27.29.45.56.45h4c.27 0 .49-.18.55-.45l.38-2.7c.61-.26 1.17-.59 1.67-.97l2.53 1.02c.23.08.48 0 .59-.22l2.04-3.53a.49.49 0 00-.11-.61l-2.15-1.7z"/></svg>`,
-  edit:     `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25z"/></svg>`,
-  trash:    `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12z"/></svg>`,
-  close:    `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`,
-  location: `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`,
-  image:    `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`,
-  // Switch TO flat (sections) — shown when in tabs mode
+  plus:       `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`,
+  settings:   `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.32.07-.64.07-.97s-.03-.66-.07-1l2.15-1.68a.5.5 0 00.11-.61l-2.04-3.53a.5.5 0 00-.59-.22l-2.54 1.02a7.4 7.4 0 00-1.67-.97l-.38-2.7A.49.49 0 0014 2h-4a.49.49 0 00-.49.42l-.38 2.7c-.61.25-1.17.59-1.67.97L4.92 5.07a.49.49 0 00-.59.22L2.29 8.82a.49.49 0 00.11.61L4.55 11.1c-.04.33-.07.66-.07 1s.03.66.07.97l-2.15 1.7a.49.49 0 00-.11.61l2.04 3.53c.11.22.36.3.59.22l2.53-1.02c.5.38 1.06.71 1.67.97l.38 2.7c.07.27.29.45.56.45h4c.27 0 .49-.18.55-.45l.38-2.7c.61-.26 1.17-.59 1.67-.97l2.53 1.02c.23.08.48 0 .59-.22l2.04-3.53a.49.49 0 00-.11-.61l-2.15-1.7z"/></svg>`,
+  edit:       `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25z"/></svg>`,
+  trash:      `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12z"/></svg>`,
+  close:      `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`,
+  location:   `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`,
+  image:      `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`,
+  backup:     `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>`,
   layoutFlat: `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>`,
-  // Switch TO tabs — shown when in flat mode
   layoutTabs: `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V8h18v11zm0-13H3V5h10v1h8z"/></svg>`,
-  fullscreen:`<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`,
+  fullscreen: `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`,
+  search:     `<svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`,
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -89,6 +106,11 @@ const STYLES = /* css */`
   gap: 2px;
 }
 .header-title { flex: 1; font-size: 17px; font-weight: 500; color: var(--primary-text-color, #212121); }
+.header-search-input {
+  flex: 1; border: none; background: none; outline: none;
+  font-size: 15px; color: var(--primary-text-color, #212121);
+  font-family: inherit; padding: 4px 0;
+}
 .btn-icon {
   width: 36px; height: 36px; border-radius: 50%; background: none; border: none;
   cursor: pointer; color: var(--secondary-text-color, #757575);
@@ -133,7 +155,7 @@ const STYLES = /* css */`
   border-radius: 10px; padding: 8px 6px 10px;
   cursor: pointer; position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
-  min-height: 82px; color: #fff;
+  min-height: 96px; color: #fff;
   transition: transform .15s, box-shadow .15s, opacity .15s;
   user-select: none;
 }
@@ -141,14 +163,14 @@ const STYLES = /* css */`
 .store-tile.no-cards { opacity: 0.45; }
 
 .tile-logo {
-  width: 36px; height: 36px; border-radius: 6px; object-fit: contain;
-  background: rgba(255,255,255,.15); margin-top: 14px;
+  width: 46px; height: 46px; border-radius: 8px; object-fit: contain;
+  background: rgba(255,255,255,.15); margin-top: 16px;
 }
 .tile-initials {
-  width: 36px; height: 36px; border-radius: 6px;
+  width: 46px; height: 46px; border-radius: 8px;
   background: rgba(255,255,255,.22);
   display: flex; align-items: center; justify-content: center;
-  font-size: 17px; font-weight: 700; margin-top: 14px;
+  font-size: 22px; font-weight: 700; margin-top: 16px;
 }
 .tile-name { font-size: 11px; font-weight: 500; text-align: center; word-break: break-word; line-height: 1.3; }
 
@@ -240,7 +262,6 @@ const STYLES = /* css */`
   background: var(--secondary-background-color, #f5f5f5);
   border-radius: 8px; padding: 10px 12px; box-sizing: border-box;
 }
-.card-name-label { font-size: 12px; color: var(--secondary-text-color, #9e9e9e); align-self: flex-start; }
 
 /* ── Menu sheet ── */
 .menu-item {
@@ -274,6 +295,8 @@ const STYLES = /* css */`
 }
 .input-row { display: flex; gap: 8px; }
 .input-row .form-input { flex: 1; }
+
+/* ── Catalog searchable dropdown ── */
 .catalog-dropdown { position: relative; }
 .catalog-dropdown-list {
   position: absolute; left: 0; right: 0; top: calc(100% + 4px);
@@ -303,13 +326,34 @@ const STYLES = /* css */`
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 700; color: #fff;
 }
-.color-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ── Color picker ── */
+.color-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
 .color-swatch {
   width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
   border: 2px solid transparent; transition: transform .1s;
 }
 .color-swatch:hover { transform: scale(1.15); }
 .color-swatch.selected { border-color: var(--primary-text-color, #212121); transform: scale(1.15); }
+.color-custom-preview {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid var(--primary-color, #1976d2); transform: scale(1.15);
+  flex-shrink: 0;
+}
+
+/* ── Advanced (collapsible) ── */
+details.advanced { margin-top: 4px; }
+details.advanced > summary {
+  font-size: 13px; color: var(--secondary-text-color, #757575);
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 0; user-select: none;
+}
+details.advanced > summary::-webkit-details-marker { display: none; }
+details.advanced > summary::after { content: '▾'; font-size: 11px; transition: transform .15s; }
+details.advanced[open] > summary::after { transform: rotate(-180deg); }
+details.advanced .advanced-body { padding-top: 12px; }
+
+/* ── Logo ── */
 .logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .logo-preview { width: 56px; height: 56px; border-radius: 10px; object-fit: contain; border: 1px solid var(--divider-color, #e0e0e0); }
 .logo-initials-preview {
@@ -318,6 +362,8 @@ const STYLES = /* css */`
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; font-weight: 700; color: #fff;
 }
+
+/* ── Buttons ── */
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 18px; border-radius: 20px; border: none; cursor: pointer;
@@ -328,15 +374,18 @@ const STYLES = /* css */`
 .btn-secondary { background: var(--secondary-background-color, #efefef); color: var(--primary-text-color, #212121); }
 .btn-danger { background: #e53935; color: #fff; }
 .btn-full { width: 100%; justify-content: center; border-radius: 8px; padding: 11px; margin-bottom: 8px; }
+
+/* ── Locations ── */
 .location-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--divider-color, #e0e0e0); }
 .location-info { flex: 1; font-size: 13px; }
 .location-name { font-weight: 500; }
 .location-coords { font-family: monospace; font-size: 11px; color: var(--secondary-text-color, #9e9e9e); }
+
+/* ── Misc ── */
 .loading { display: flex; align-items: center; justify-content: center; padding: 36px; gap: 12px; color: var(--secondary-text-color, #9e9e9e); font-size: 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { width: 22px; height: 22px; border: 3px solid var(--divider-color, #e0e0e0); border-top-color: var(--primary-color, #1976d2); border-radius: 50%; animation: spin .7s linear infinite; }
 .error-banner { background: #ffebee; color: #b71c1c; padding: 12px 16px; font-size: 13px; margin: 12px; border-radius: 8px; }
-.scanner-wrap { margin-top: 8px; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 1; }
 `;
 
 // ── Card element ──────────────────────────────────────────────────────────────
@@ -345,21 +394,23 @@ class LoyaltyCardsCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._hass          = null;
-    this._catalog       = null;
-    this._data          = null;
-    this._config        = {};
-    this._layout        = localStorage.getItem(LAYOUT_KEY) || 'flat'; // 'flat' | 'tabs'
-    this._activeCategory = null; // for tabs layout
-    this._modal         = null;
-    this._md            = {};
-    this._unsub         = null;
-    this._initialized   = false;
-    this._error         = null;
-    this._scanner       = null;
-    this._scannerEl     = null;
-    this._fullscreenEl  = null;
-    this._wakeLock      = null;
+    this._hass           = null;
+    this._catalog        = null;
+    this._data           = null;
+    this._config         = {};
+    this._layout         = localStorage.getItem(LAYOUT_KEY) || 'flat';
+    this._activeCategory = null;
+    this._searching      = false;
+    this._searchQuery    = '';
+    this._modal          = null;
+    this._md             = {};
+    this._unsub          = null;
+    this._initialized    = false;
+    this._error          = null;
+    this._scanner        = null;
+    this._scannerEl      = null;
+    this._fullscreenEl   = null;
+    this._wakeLock       = null;
   }
 
   setConfig(config) { this._config = config || {}; }
@@ -425,65 +476,87 @@ class LoyaltyCardsCard extends HTMLElement {
 
   _render() {
     this._destroyScanner();
-    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="card-root">${this._buildMain()}</div>`;
+    const body = this._error
+      ? `<div class="error-banner">⚠️ ${esc(this._error)}</div>`
+      : `${this._buildHeader()}<div id="card-content">${this._buildContent()}</div>`;
+    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="card-root">${body}</div>`;
     this._bindRootEvents();
   }
 
-  _buildMain() {
-    if (this._error) return `<div class="error-banner">⚠️ ${this._error}</div>`;
-
-    // Header
-    const layoutIcon = this._layout === 'flat' ? ICON.layoutTabs : ICON.layoutFlat;
-    const layoutTitle = this._layout === 'flat' ? 'Přepnout na záložky' : 'Přepnout na sekce';
-    const header = `
-      <div class="header">
-        <span class="header-title">Věrnostní karty</span>
-        <button class="btn-icon" data-action="toggle-layout" title="${layoutTitle}">${layoutIcon}</button>
-        <button class="btn-icon accent" data-action="open-add-store" title="Přidat obchod">${ICON.plus}</button>
-        <button class="btn-icon" data-action="open-settings" title="Nastavení">${ICON.settings}</button>
-      </div>`;
-
-    return header + (this._layout === 'tabs' ? this._buildTabs() : this._buildFlat());
+  _renderContent() {
+    const el = this.shadowRoot.querySelector('#card-content');
+    if (el) el.innerHTML = this._buildContent();
   }
 
-  // ── Flat layout: categories as section headers ──
+  _buildHeader() {
+    if (this._searching) {
+      return `<div class="header">
+        <button class="btn-icon" data-action="close-search">${ICON.close}</button>
+        <input class="header-search-input" id="header-search" placeholder="Hledat obchod…" autocomplete="off">
+      </div>`;
+    }
+    const layoutIcon  = this._layout === 'flat' ? ICON.layoutTabs : ICON.layoutFlat;
+    const layoutTitle = this._layout === 'flat' ? 'Přepnout na záložky' : 'Přepnout na sekce';
+    return `<div class="header">
+      <span class="header-title">Věrnostní karty</span>
+      <button class="btn-icon" data-action="open-search" title="Hledat">${ICON.search}</button>
+      <button class="btn-icon" data-action="toggle-layout" title="${layoutTitle}">${layoutIcon}</button>
+      <button class="btn-icon accent" data-action="open-add-store" title="Přidat obchod">${ICON.plus}</button>
+      <button class="btn-icon" data-action="open-settings" title="Nastavení">${ICON.settings}</button>
+    </div>`;
+  }
+
+  _buildContent() {
+    return this._layout === 'tabs' ? this._buildTabs() : this._buildFlat();
+  }
+
+  // ── Flat layout ──
 
   _buildFlat() {
     const categories = this._categorize();
-    if (categories.length === 0) {
-      return `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
+    const filtered   = this._applySearch(categories);
+    if (filtered.length === 0) {
+      return this._searchQuery
+        ? `<div class="empty-state"><span class="icon">🔍</span>Žádný obchod neodpovídá „${esc(this._searchQuery)}".</div>`
+        : `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
     }
-    return categories.map(({ label, stores }) => `
+    return filtered.map(({ label, stores }) => `
       <div class="cat-header">${esc(label)}</div>
       <div class="store-grid">${stores.map(s => this._buildTile(s)).join('')}</div>
     `).join('');
   }
 
-  // ── Tabs layout: category tabs + filtered grid ──
+  // ── Tabs layout ──
 
   _buildTabs() {
     const categories = this._categorize();
-    if (categories.length === 0) {
-      return `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
+    const filtered   = this._applySearch(categories);
+    if (filtered.length === 0) {
+      return this._searchQuery
+        ? `<div class="empty-state"><span class="icon">🔍</span>Žádný obchod neodpovídá „${esc(this._searchQuery)}".</div>`
+        : `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
     }
-
-    // Ensure active category is valid
-    if (!this._activeCategory || !categories.find(c => c.key === this._activeCategory)) {
-      this._activeCategory = categories[0].key;
+    if (!this._activeCategory || !filtered.find(c => c.key === this._activeCategory)) {
+      this._activeCategory = filtered[0].key;
     }
-
     const tabs = `<div class="cat-tabs">
-      ${categories.map(({ key, label }) =>
+      ${filtered.map(({ key, label }) =>
         `<button class="cat-tab${key === this._activeCategory ? ' active' : ''}" data-action="switch-category" data-cat="${key}">${esc(label)}</button>`
       ).join('')}
     </div>`;
-
-    const activeStores = categories.find(c => c.key === this._activeCategory)?.stores || [];
+    const activeStores = filtered.find(c => c.key === this._activeCategory)?.stores || [];
     const grid = activeStores.length === 0
-      ? `<div class="empty-state" style="padding:24px"><p>Žádné obchody v této kategorii.</p></div>`
+      ? `<div class="empty-state" style="padding:24px">Žádné obchody v této kategorii.</div>`
       : `<div class="store-grid">${activeStores.map(s => this._buildTile(s)).join('')}</div>`;
-
     return tabs + grid;
+  }
+
+  _applySearch(categories) {
+    if (!this._searchQuery) return categories.filter(c => c.stores.length > 0);
+    const q = this._searchQuery.toLowerCase();
+    return categories
+      .map(c => ({ ...c, stores: c.stores.filter(s => s.name.toLowerCase().includes(q)) }))
+      .filter(c => c.stores.length > 0);
   }
 
   // ── Tile ──
@@ -518,17 +591,43 @@ class LoyaltyCardsCard extends HTMLElement {
       e.stopPropagation();
       const { action, id, cat } = el.dataset;
       switch (action) {
-        case 'open-barcode':     return this._openBarcode(id);
-        case 'open-tile-menu':   return this._openModal('tile-menu', { storeId: id });
-        case 'open-add-store':   return this._openModal('add-store', { color: DEFAULT_COLORS[0] });
-        case 'open-settings':    return this._openModal('settings', {});
-        case 'toggle-layout':    return this._toggleLayout();
+        case 'open-barcode':    return this._openBarcode(id);
+        case 'open-tile-menu':  return this._openModal('tile-menu', { storeId: id });
+        case 'open-add-store':  return this._openModal('add-store', { color: DEFAULT_COLORS[0] });
+        case 'open-settings':   return this._openModal('settings', {});
+        case 'toggle-layout':   return this._toggleLayout();
+        case 'open-search':
+          this._searching = true;
+          this._searchQuery = '';
+          this._render();
+          setTimeout(() => this.shadowRoot.querySelector('#header-search')?.focus(), 50);
+          return;
+        case 'close-search':
+          this._searching = false;
+          this._searchQuery = '';
+          this._render();
+          return;
         case 'switch-category':
           this._activeCategory = cat;
           this._render();
           return;
       }
     });
+
+    const searchInput = this.shadowRoot.querySelector('#header-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', e => {
+        this._searchQuery = e.target.value;
+        this._renderContent();
+      });
+      searchInput.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          this._searching = false;
+          this._searchQuery = '';
+          this._render();
+        }
+      });
+    }
   }
 
   _toggleLayout() {
@@ -545,7 +644,7 @@ class LoyaltyCardsCard extends HTMLElement {
     this._openModal('barcode', { storeId, tabIdx: 0 });
   }
 
-  // ── Categorize stores ──
+  // ── Categorize ──
 
   _categorize() {
     const stores = this._data?.stores || [];
@@ -556,15 +655,12 @@ class LoyaltyCardsCard extends HTMLElement {
     }
     const labels = Object.keys(this._catalog?.category_labels || {}).length
       ? this._catalog.category_labels : FALLBACK_CATEGORY_LABELS;
-
-    // Preserve catalog order, then append any extra categories
     const catalogOrder = this._catalog?.stores
       ? [...new Set(this._catalog.stores.map(s => s.category))]
       : [];
     const allCats = [...catalogOrder, ...Object.keys(byCategory)]
       .filter((c, i, a) => a.indexOf(c) === i)
       .filter(c => byCategory[c]?.length > 0);
-
     return allCats.map(key => ({ key, label: labels[key] || key, stores: byCategory[key] }));
   }
 
@@ -634,17 +730,16 @@ class LoyaltyCardsCard extends HTMLElement {
         ${logoEl}${initialsEl}
         <span class="modal-title">${esc(store.name)}</span>
         <button class="btn-icon accent" data-action="open-add-card-from-barcode" title="Přidat kartu">${ICON.plus}</button>
-        <button class="btn-icon" data-action="open-store-menu-from-barcode" title="Možnosti obchodu">⋮</button>
+        <button class="btn-icon" data-action="open-store-menu-from-barcode" title="Možnosti">⋮</button>
         <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
       </div>
       ${tabs}
       <div class="barcode-view">
-        <div class="card-name-label">${card ? esc(card.name) : ''}</div>
         <div class="barcode-wrap" id="barcode-container" title="Klepnutím zobrazit přes celou obrazovku">
           <div class="spinner"></div>
         </div>
         <div class="barcode-zoom-hint">${ICON.fullscreen} Klepnutím přes celou obrazovku</div>
-        <div class="barcode-value">${card ? card.barcode : ''}</div>
+        <div class="barcode-value">${card ? esc(card.barcode) : ''}</div>
         ${card?.notes ? `<div class="card-notes">${esc(card.notes)}</div>` : ''}
       </div>
       ${card ? `<div class="modal-footer">
@@ -692,7 +787,7 @@ class LoyaltyCardsCard extends HTMLElement {
         <div class="catalog-group-header">${esc(labels[cat] || cat)}</div>
         ${stores.map(s => {
           const logo = getLogoUrl(s);
-          return `<div class="catalog-option" data-key="${esc(s.key)}" data-name="${esc(s.name)}" data-category="${esc(s.category)}">
+          return `<div class="catalog-option" data-key="${esc(s.key)}" data-name="${esc(s.name)}" data-category="${esc(s.category)}" data-logo="${esc(logo || '')}">
             ${logo
               ? `<img class="catalog-option-logo" src="${logo}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="catalog-option-initial" style="display:none">${s.name[0].toUpperCase()}</div>`
               : `<div class="catalog-option-initial">${s.name[0].toUpperCase()}</div>`}
@@ -717,15 +812,14 @@ class LoyaltyCardsCard extends HTMLElement {
         </div>` : ''}
         <div class="form-field">
           <label class="form-label">Název *</label>
-          <input class="form-input" id="store-name" placeholder="Název obchodu">
-        </div>
-        <div class="form-field">
-          <label class="form-label">Kategorie</label>
-          <select class="form-input form-select" id="store-category">${this._catOptions('other')}</select>
+          <input class="form-input" id="store-name" placeholder="Vlastní název obchodu">
         </div>
         <div class="form-field">
           <label class="form-label">Barva dlaždice</label>
-          <div class="color-row">${this._colorSwatches(curColor)}</div>
+          <div class="color-row">
+            ${this._colorSwatches(curColor)}
+            <div id="color-custom-preview" class="color-custom-preview" style="display:none"></div>
+          </div>
           <input type="hidden" id="store-color" value="${curColor}">
         </div>
       </div>
@@ -760,10 +854,6 @@ class LoyaltyCardsCard extends HTMLElement {
           <input class="form-input" id="store-name" value="${esc(store.name)}">
         </div>
         <div class="form-field">
-          <label class="form-label">Kategorie</label>
-          <select class="form-input form-select" id="store-category">${this._catOptions(store.category)}</select>
-        </div>
-        <div class="form-field">
           <label class="form-label">Barva dlaždice</label>
           <div class="color-row">${this._colorSwatches(curColor)}</div>
           <input type="hidden" id="store-color" value="${curColor}">
@@ -793,23 +883,28 @@ class LoyaltyCardsCard extends HTMLElement {
           <label class="form-label">Číslo / kód *</label>
           <div class="input-row">
             <input class="form-input" id="card-barcode" placeholder="1234567890123">
-            <button class="btn btn-secondary" data-action="start-scan">📷</button>
+            <button class="btn btn-secondary" data-action="start-scan" title="Kamera">📷</button>
+            <button class="btn btn-secondary" data-action="start-file-scan" title="Ze souboru">🖼️</button>
           </div>
-          <div id="scan-area" style="display:none">
-            <div class="scanner-wrap" id="scan-container"></div>
-            <button class="btn btn-secondary btn-full" data-action="stop-scan" style="margin-top:8px">Zastavit skener</button>
+          <div id="scan-area" style="display:none;margin-top:8px">
+            <button class="btn btn-secondary btn-full" data-action="stop-scan" style="margin-top:0">Zastavit skener</button>
           </div>
         </div>
-        <div class="form-field">
-          <label class="form-label">Typ čárového kódu</label>
-          <select class="form-input form-select" id="card-type">
-            ${BARCODE_TYPES.map(t => `<option value="${t}"${t==='EAN_13'?' selected':''}>${t}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-field">
-          <label class="form-label">Poznámky</label>
-          <textarea class="form-input" id="card-notes" rows="2" placeholder="Volitelné…"></textarea>
-        </div>
+        <details class="advanced">
+          <summary>Pokročilé</summary>
+          <div class="advanced-body">
+            <div class="form-field">
+              <label class="form-label">Typ čárového kódu (automaticky detekován)</label>
+              <select class="form-input form-select" id="card-type">
+                ${BARCODE_TYPES.map(t => `<option value="${t}"${t==='EAN_13'?' selected':''}>${t}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-label">Poznámky</label>
+              <textarea class="form-input" id="card-notes" rows="2" placeholder="Volitelné…"></textarea>
+            </div>
+          </div>
+        </details>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" style="flex:1" data-action="close-modal">Zrušit</button>
@@ -836,18 +931,23 @@ class LoyaltyCardsCard extends HTMLElement {
         </div>
         <div class="form-field">
           <label class="form-label">Číslo / kód *</label>
-          <input class="form-input" id="card-barcode" value="${card.barcode}">
+          <input class="form-input" id="card-barcode" value="${esc(card.barcode)}">
         </div>
-        <div class="form-field">
-          <label class="form-label">Typ čárového kódu</label>
-          <select class="form-input form-select" id="card-type">
-            ${BARCODE_TYPES.map(t => `<option value="${t}"${t===card.barcode_type?' selected':''}>${t}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-field">
-          <label class="form-label">Poznámky</label>
-          <textarea class="form-input" id="card-notes" rows="2">${esc(card.notes||'')}</textarea>
-        </div>
+        <details class="advanced">
+          <summary>Pokročilé</summary>
+          <div class="advanced-body">
+            <div class="form-field">
+              <label class="form-label">Typ čárového kódu</label>
+              <select class="form-input form-select" id="card-type">
+                ${BARCODE_TYPES.map(t => `<option value="${t}"${t===card.barcode_type?' selected':''}>${t}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-label">Poznámky</label>
+              <textarea class="form-input" id="card-notes" rows="2">${esc(card.notes||'')}</textarea>
+            </div>
+          </div>
+        </details>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" style="flex:1" data-action="close-modal">Zrušit</button>
@@ -921,7 +1021,10 @@ class LoyaltyCardsCard extends HTMLElement {
             <input class="form-input" id="loc-lat" placeholder="Lat" type="number" step="0.00001">
             <input class="form-input" id="loc-lon" placeholder="Lon" type="number" step="0.00001">
           </div>
-          <input class="form-input" id="loc-radius" placeholder="Poloměr v metrech (výchozí 300)" type="number">
+          <div class="input-row" style="margin-bottom:8px">
+            <input class="form-input" id="loc-radius" placeholder="Poloměr v metrech (výchozí 300)" type="number">
+            <button class="btn btn-secondary" data-action="use-gps" title="Použít GPS polohu">📍</button>
+          </div>
         </div>
         <button class="btn btn-primary btn-full" data-action="add-location">Přidat lokaci</button>
       </div>
@@ -957,6 +1060,8 @@ class LoyaltyCardsCard extends HTMLElement {
           <input type="checkbox" id="s-notif" ${s.notifications_enabled!==false?'checked':''} style="width:18px;height:18px;cursor:pointer">
           <label for="s-notif" class="form-label" style="margin:0;cursor:pointer">Upozornění povolena</label>
         </div>
+        <hr style="border:none;border-top:1px solid var(--divider-color,#e0e0e0);margin:12px 0">
+        <button class="btn btn-secondary btn-full" data-action="do-backup">${ICON.backup} Zálohovat data (stáhnout JSON)</button>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" style="flex:1" data-action="close-modal">Zrušit</button>
@@ -965,7 +1070,7 @@ class LoyaltyCardsCard extends HTMLElement {
     </div>`;
   }
 
-  // ── Modal event binding ──
+  // ── Modal events ──
 
   _bindModalEvents(overlay) {
     overlay.addEventListener('click', e => {
@@ -984,6 +1089,9 @@ class LoyaltyCardsCard extends HTMLElement {
       dropInput.addEventListener('input', () => {
         const q = dropInput.value.toLowerCase();
         dropList.classList.add('open');
+        // User is typing manually — clear any catalog binding
+        this._md.storeKey = null;
+        dropList.querySelectorAll('.catalog-option').forEach(o => o.classList.remove('selected'));
         dropList.querySelectorAll('.catalog-option').forEach(opt => {
           opt.style.display = (opt.dataset.name || '').toLowerCase().includes(q) ? '' : 'none';
         });
@@ -992,26 +1100,47 @@ class LoyaltyCardsCard extends HTMLElement {
         });
       });
       dropList.querySelectorAll('.catalog-option').forEach(opt => {
-        opt.addEventListener('mousedown', e => e.preventDefault()); // keep input focused
-        opt.addEventListener('click', () => {
+        opt.addEventListener('mousedown', e => e.preventDefault());
+        opt.addEventListener('click', async () => {
           dropList.querySelectorAll('.catalog-option').forEach(o => o.classList.remove('selected'));
           opt.classList.add('selected');
           dropInput.value = opt.dataset.name || '';
           dropList.classList.remove('open');
+          // Fill only name + storeKey; do not auto-change category (handled by integration)
           const n = overlay.querySelector('#store-name');
-          const c = overlay.querySelector('#store-category');
           if (n) n.value = opt.dataset.name || '';
-          if (c) c.value = opt.dataset.category || 'other';
           this._md.storeKey = opt.dataset.key || null;
+          // Extract dominant color from logo
+          const logo = opt.dataset.logo;
+          if (logo) {
+            const color = await this._extractDominantColor(logo);
+            if (color) {
+              const colorInput = overlay.querySelector('#store-color');
+              if (colorInput) colorInput.value = color;
+              overlay.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+              const preview = overlay.querySelector('#color-custom-preview');
+              if (preview) { preview.style.background = color; preview.style.display = ''; }
+            }
+          }
         });
       });
     }
+
+    // Auto-detect barcode type on blur
+    overlay.querySelector('#card-barcode')?.addEventListener('blur', e => {
+      const val = e.target.value.trim();
+      if (!val) return;
+      const sel = overlay.querySelector('#card-type');
+      if (sel) sel.value = detectBarcodeType(val);
+    });
 
     overlay.querySelectorAll('.color-swatch').forEach(sw => {
       sw.addEventListener('click', () => {
         overlay.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
         sw.classList.add('selected');
         overlay.querySelector('#store-color').value = sw.dataset.color;
+        const preview = overlay.querySelector('#color-custom-preview');
+        if (preview) preview.style.display = 'none';
       });
     });
 
@@ -1069,8 +1198,11 @@ class LoyaltyCardsCard extends HTMLElement {
       case 'delete-logo':      return this._doDeleteLogo();
       case 'add-location':     return this._doAddLocation(overlay);
       case 'delete-location':  return this._doDeleteLocation(parseInt(el.dataset.idx));
+      case 'use-gps':          return this._doUseGps(overlay);
       case 'save-settings':    return this._doSaveSettings(overlay);
+      case 'do-backup':        return this._doBackup();
       case 'start-scan':       return this._startScan(overlay);
+      case 'start-file-scan':  return this._startFileScan(overlay);
       case 'stop-scan':        return this._stopScan(overlay);
     }
   }
@@ -1082,20 +1214,15 @@ class LoyaltyCardsCard extends HTMLElement {
     const cards  = store?.cards || [];
     const card   = cards[this._md.tabIdx ?? 0];
     if (!card) return;
-
     const container = overlay.querySelector('#barcode-container');
     if (!container) return;
-
     await this._renderBarcodeInElement(card, container, false);
-
-    // Fullscreen on click
     container.addEventListener('click', () => this._openFullscreenBarcode(card));
   }
 
   async _renderBarcodeInElement(card, container, large = false) {
     container.innerHTML = '';
     const fmt = card.barcode_type || 'CODE_128';
-
     try {
       if (JSBARCODE_FORMAT[fmt]) {
         await loadJsBarcode();
@@ -1119,12 +1246,6 @@ class LoyaltyCardsCard extends HTMLElement {
         // eslint-disable-next-line no-undef
         await QRCode.toCanvas(canvas, card.barcode, { width: Math.min(size, 400), margin: 2 });
         if (large) canvas.style.cssText = 'max-width:90vw;max-height:70vh';
-        if (large && fmt !== 'QR_CODE') {
-          const note = document.createElement('div');
-          note.style.cssText = 'font-size:11px;color:#9e9e9e;margin-top:4px;text-align:center';
-          note.textContent = `(zobrazeno jako QR — formát ${fmt})`;
-          container.appendChild(note);
-        }
       }
       if (large) {
         const val = document.createElement('div');
@@ -1143,14 +1264,10 @@ class LoyaltyCardsCard extends HTMLElement {
     await this._closeFullscreen();
 
     const el = document.createElement('div');
-    el.style.cssText = [
-      'position:fixed', 'inset:0', 'z-index:99999', 'background:#ffffff',
-      'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
-      'cursor:pointer', 'touch-action:manipulation',
-    ].join(';');
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation';
 
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px';
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px;max-width:100%';
     el.appendChild(wrap);
 
     const hint = document.createElement('div');
@@ -1161,23 +1278,23 @@ class LoyaltyCardsCard extends HTMLElement {
     document.body.appendChild(el);
     this._fullscreenEl = el;
 
-    // Screen Wake Lock — prevents display from dimming
+    // Fullscreen API — required for orientation lock on most browsers
+    try { await el.requestFullscreen({ navigationUI: 'hide' }); } catch {}
+
+    // Screen Wake Lock
     try { this._wakeLock = await navigator.wakeLock.request('screen'); } catch {}
 
-    // Try landscape orientation lock
+    // Landscape orientation lock
     try { await screen.orientation.lock('landscape'); } catch {}
 
     await this._renderBarcodeInElement(card, wrap, true);
-
     el.addEventListener('click', () => this._closeFullscreen());
   }
 
   async _closeFullscreen() {
-    if (this._wakeLock) {
-      try { await this._wakeLock.release(); } catch {}
-      this._wakeLock = null;
-    }
+    if (this._wakeLock) { try { await this._wakeLock.release(); } catch {} this._wakeLock = null; }
     try { screen.orientation.unlock(); } catch {}
+    if (document.fullscreenElement === this._fullscreenEl) { try { await document.exitFullscreen(); } catch {} }
     this._fullscreenEl?.remove();
     this._fullscreenEl = null;
   }
@@ -1189,7 +1306,6 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!name) return alert('Zadej název obchodu.');
     const data = {
       name,
-      category:   overlay.querySelector('#store-category')?.value || 'other',
       tile_color: overlay.querySelector('#store-color')?.value || DEFAULT_COLORS[0],
     };
     if (this._md.storeKey) data.store_key = this._md.storeKey;
@@ -1205,7 +1321,6 @@ class LoyaltyCardsCard extends HTMLElement {
     await this._callService('update_store', {
       store_id:   store.id,
       name,
-      category:   overlay.querySelector('#store-category')?.value,
       tile_color: overlay.querySelector('#store-color')?.value,
     });
     this._closeModal();
@@ -1227,7 +1342,7 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!name || !barcode) return alert('Vyplň název a kód karty.');
     await this._callService('add_card', {
       store_id: storeId, name, barcode,
-      barcode_type: overlay.querySelector('#card-type')?.value || 'CODE_128',
+      barcode_type: overlay.querySelector('#card-type')?.value || detectBarcodeType(barcode),
       notes: overlay.querySelector('#card-notes')?.value || '',
     });
     this._closeModal();
@@ -1244,7 +1359,7 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!name || !barcode) return alert('Vyplň název a kód karty.');
     await this._callService('update_card', {
       card_id: cardId, name, barcode,
-      barcode_type: overlay.querySelector('#card-type')?.value,
+      barcode_type: overlay.querySelector('#card-type')?.value || detectBarcodeType(barcode),
       notes: overlay.querySelector('#card-notes')?.value || '',
     });
     this._closeModal();
@@ -1314,6 +1429,16 @@ class LoyaltyCardsCard extends HTMLElement {
     this._openModal('locations', { storeId: store.id });
   }
 
+  async _doUseGps(overlay) {
+    if (!navigator.geolocation) return alert('GPS není dostupná.');
+    navigator.geolocation.getCurrentPosition(pos => {
+      const latEl = overlay.querySelector('#loc-lat');
+      const lonEl = overlay.querySelector('#loc-lon');
+      if (latEl) latEl.value = pos.coords.latitude.toFixed(6);
+      if (lonEl) lonEl.value = pos.coords.longitude.toFixed(6);
+    }, () => alert('Nepodařilo se získat polohu.'));
+  }
+
   async _doSaveSettings(overlay) {
     const trackers = (overlay.querySelector('#s-trackers')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
     await this._callService('update_settings', {
@@ -1325,6 +1450,20 @@ class LoyaltyCardsCard extends HTMLElement {
     this._closeModal();
   }
 
+  _doBackup() {
+    if (!this._data) return alert('Žádná data k záloze.');
+    const json = JSON.stringify(this._data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `loyalty-cards-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // ── Scanner ──
 
   async _startScan(overlay) {
@@ -1333,27 +1472,69 @@ class LoyaltyCardsCard extends HTMLElement {
     scanArea.style.display = '';
     try {
       await loadScanner();
-      const shadowEl = overlay.querySelector('#scan-container');
-      const rect = shadowEl?.getBoundingClientRect() || { top: 100, left: 0, width: 300 };
       const host = document.createElement('div');
       host.id = `lcc-scan-${Date.now()}`;
-      host.style.cssText = `position:fixed;z-index:99999;background:#000;border-radius:8px;overflow:hidden;top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.width}px`;
+      const size = Math.min(window.innerWidth * 0.88, 400);
+      host.style.cssText = [
+        'position:fixed', 'z-index:99999', 'background:#000', 'border-radius:12px', 'overflow:hidden',
+        `width:${size}px`, `height:${size}px`,
+        'top:50%', 'left:50%', 'transform:translate(-50%,-50%)',
+        'box-shadow:0 8px 40px rgba(0,0,0,.6)',
+      ].join(';');
       document.body.appendChild(host);
       this._scannerEl = host;
       // eslint-disable-next-line no-undef
       const scanner = new Html5Qrcode(host.id);
       this._scanner = scanner;
+      const qrbox = Math.round(size * 0.65);
       await scanner.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
-        decoded => {
+        { fps: 10, qrbox: { width: qrbox, height: qrbox } },
+        (decoded, result) => {
           const input = overlay.querySelector('#card-barcode');
           if (input) input.value = decoded;
+          // Auto-set detected format
+          const fmtNum = result?.result?.format?.format;
+          const fmtName = result?.result?.format?.formatName;
+          const detectedType = fmtName && BARCODE_TYPES.includes(fmtName)
+            ? fmtName
+            : (HTML5QR_FORMAT[fmtNum] || detectBarcodeType(decoded));
+          const sel = overlay.querySelector('#card-type');
+          if (sel) sel.value = detectedType;
           this._stopScan(overlay);
         }
       );
     } catch (e) {
       scanArea.innerHTML = `<div style="padding:10px;color:#c62828;font-size:13px">Skener nelze spustit: ${e.message}</div>`;
+    }
+  }
+
+  async _startFileScan(overlay) {
+    try {
+      await loadScanner();
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.style.display = 'none';
+      document.body.appendChild(fileInput);
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files[0];
+        fileInput.remove();
+        if (!file) return;
+        try {
+          // eslint-disable-next-line no-undef
+          const decoded = await Html5Qrcode.scanFile(file, false);
+          const input = overlay.querySelector('#card-barcode');
+          if (input) input.value = decoded;
+          const sel = overlay.querySelector('#card-type');
+          if (sel) sel.value = detectBarcodeType(decoded);
+        } catch {
+          alert('Kód v obrázku nebyl nalezen.');
+        }
+      });
+      fileInput.click();
+    } catch (e) {
+      alert(`Chyba: ${e.message}`);
     }
   }
 
@@ -1368,17 +1549,46 @@ class LoyaltyCardsCard extends HTMLElement {
     if (this._scannerEl) { this._scannerEl.remove(); this._scannerEl = null; }
   }
 
+  // ── Dominant color extraction ──
+
+  async _extractDominantColor(imageUrl) {
+    return new Promise(resolve => {
+      if (!imageUrl) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 16; canvas.height = 16;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, 16, 16);
+          const data = ctx.getImageData(0, 0, 16, 16).data;
+          const counts = {};
+          let maxCount = 0, dominant = null;
+          for (let i = 0; i < data.length; i += 4) {
+            const a = data[i + 3];
+            if (a < 128) continue;
+            const r = Math.round(data[i] / 40) * 40;
+            const g = Math.round(data[i+1] / 40) * 40;
+            const b = Math.round(data[i+2] / 40) * 40;
+            // Skip near-white and near-black — not good tile colors
+            if (r > 220 && g > 220 && b > 220) continue;
+            if (r < 30 && g < 30 && b < 30) continue;
+            const key = `${r},${g},${b}`;
+            counts[key] = (counts[key] || 0) + 1;
+            if (counts[key] > maxCount) { maxCount = counts[key]; dominant = [r, g, b]; }
+          }
+          resolve(dominant ? `rgb(${dominant[0]},${dominant[1]},${dominant[2]})` : null);
+        } catch { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = imageUrl;
+    });
+  }
+
   // ── Helpers ──
 
   _findStore(id) { return this._data?.stores?.find(s => s.id === id) || null; }
-
-  _catOptions(selected) {
-    const labels = Object.keys(this._catalog?.category_labels||{}).length
-      ? this._catalog.category_labels : FALLBACK_CATEGORY_LABELS;
-    return Object.entries(labels)
-      .map(([k, v]) => `<option value="${k}"${k===selected?' selected':''}>${v}</option>`)
-      .join('');
-  }
 
   _colorSwatches(selected) {
     return DEFAULT_COLORS.map(c =>
