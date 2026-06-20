@@ -1613,43 +1613,64 @@ class LoyaltyCardsCard extends HTMLElement {
         if (sel) sel.value = type;
       };
 
-      // Primary: BarcodeDetector
+      // Load file onto a canvas — universally supported, handles large gallery photos
+      const MAX_DIM = 1920;
+      let canvas;
+      try {
+        canvas = await new Promise((resolve, reject) => {
+          const img = new Image();
+          const url = URL.createObjectURL(file);
+          img.onload = () => {
+            URL.revokeObjectURL(url);
+            const scale = Math.min(1, MAX_DIM / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+            const w = Math.round(img.naturalWidth * scale);
+            const h = Math.round(img.naturalHeight * scale);
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(c);
+          };
+          img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('load')); };
+          img.src = url;
+        });
+      } catch {
+        alert('Nepodařilo se načíst obrázek.');
+        return;
+      }
+
+      // Primary: BarcodeDetector — detect on canvas
       if ('BarcodeDetector' in window) {
         try {
           // eslint-disable-next-line no-undef
           const supported = await BarcodeDetector.getSupportedFormats();
           // eslint-disable-next-line no-undef
           const detector = new BarcodeDetector({ formats: supported });
-          // Scale down large gallery photos so the detector can process them reliably
-          const MAX_DIM = 1920;
-          let bitmap = await createImageBitmap(file);
-          if (bitmap.width > MAX_DIM || bitmap.height > MAX_DIM) {
-            const scale = MAX_DIM / Math.max(bitmap.width, bitmap.height);
-            bitmap = await createImageBitmap(file, {
-              resizeWidth: Math.round(bitmap.width * scale),
-              resizeHeight: Math.round(bitmap.height * scale),
-              resizeQuality: 'medium',
-            });
-          }
-          const results = await detector.detect(bitmap);
+          const results = await detector.detect(canvas);
           if (results.length > 0) {
             setResult(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
             return;
           }
-          // No barcode found — fall through to html5-qrcode before showing alert
         } catch (e) {
           console.warn('BarcodeDetector failed:', e);
         }
       }
 
-      // Fallback: html5-qrcode static scanFile
+      // Fallback: html5-qrcode — must use instance method, not static
+      const tmpId = `lc-scan-${Date.now()}`;
+      const tmpDiv = document.createElement('div');
+      tmpDiv.id = tmpId;
+      tmpDiv.style.cssText = 'position:fixed;left:-9999px;top:0;width:300px;height:300px;visibility:hidden';
+      document.body.appendChild(tmpDiv);
       try {
         await loadScanner();
         // eslint-disable-next-line no-undef
-        const decoded = await Html5Qrcode.scanFile(file, false);
+        const scanner = new Html5Qrcode(tmpId, { verbose: false });
+        const decoded = await scanner.scanFile(file, false);
         setResult(decoded, detectBarcodeType(decoded));
-      } catch (e) {
-        alert(`Kód v obrázku nebyl nalezen.\n${e?.message || e}`);
+      } catch {
+        alert('Kód v obrázku nebyl nalezen.');
+      } finally {
+        tmpDiv.remove();
       }
     });
 
