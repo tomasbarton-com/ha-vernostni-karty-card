@@ -1473,72 +1473,190 @@ class LoyaltyCardsCard extends HTMLElement {
     const scanArea = overlay.querySelector('#scan-area');
     if (!scanArea) return;
     scanArea.style.display = '';
+
+    // Build fullscreen camera UI in light DOM
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
+
+    const vidWrap = document.createElement('div');
+    vidWrap.style.cssText = 'position:relative;width:min(88vw,380px);aspect-ratio:1;border-radius:14px;overflow:hidden;background:#111';
+
+    const video = document.createElement('video');
+    video.autoplay = true; video.playsInline = true; video.muted = true;
+    video.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+
+    const vfSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    vfSvg.setAttribute('viewBox', '0 0 100 100');
+    vfSvg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+    vfSvg.innerHTML = `
+      <path d="M20 30 L20 20 L30 20" stroke="white" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <path d="M70 20 L80 20 L80 30" stroke="white" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <path d="M80 70 L80 80 L70 80" stroke="white" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <path d="M30 80 L20 80 L20 70" stroke="white" stroke-width="3.5" stroke-linecap="round" fill="none"/>`;
+
+    const statusEl = document.createElement('div');
+    statusEl.style.cssText = 'color:rgba(255,255,255,.75);font-size:13px;font-family:sans-serif;text-align:center';
+    statusEl.textContent = 'Namiřte kameru na čárový kód';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Zavřít';
+    closeBtn.style.cssText = 'padding:10px 32px;border-radius:20px;background:#fff;border:none;font-size:15px;cursor:pointer;font-family:sans-serif;font-weight:500';
+
+    vidWrap.appendChild(video); vidWrap.appendChild(vfSvg);
+    host.appendChild(vidWrap); host.appendChild(statusEl); host.appendChild(closeBtn);
+    document.body.appendChild(host);
+    this._scannerEl = host;
+
+    const state = { stream: null, frame: null };
+    const cleanup = () => {
+      if (state.frame) { cancelAnimationFrame(state.frame); state.frame = null; }
+      if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+      host.remove();
+      this._scannerEl = null;
+      this._scanner = null;
+      const sa = overlay?.querySelector('#scan-area');
+      if (sa) sa.style.display = 'none';
+    };
+    closeBtn.addEventListener('click', cleanup);
+    this._scanner = { cleanup };
+
+    // Open camera
+    try {
+      state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      video.srcObject = state.stream;
+      await video.play();
+    } catch (e) {
+      cleanup();
+      scanArea.innerHTML = `<p style="color:#c62828;font-size:13px;margin:6px 0">Kamera nedostupná: ${esc(e.message)}</p>`;
+      return;
+    }
+
+    const onDecoded = (value, type) => {
+      const input = overlay.querySelector('#card-barcode');
+      if (input) input.value = value;
+      const sel = overlay.querySelector('#card-type');
+      if (sel) sel.value = type;
+      cleanup();
+    };
+
+    // Primary: BarcodeDetector (Chrome/Android/iOS 17+)
+    if ('BarcodeDetector' in window) {
+      let detector;
+      try {
+        // eslint-disable-next-line no-undef
+        const supported = await BarcodeDetector.getSupportedFormats();
+        // eslint-disable-next-line no-undef
+        detector = new BarcodeDetector({ formats: supported });
+      } catch {
+        // eslint-disable-next-line no-undef
+        detector = new BarcodeDetector();
+      }
+      const tick = async () => {
+        if (!document.body.contains(host)) return;
+        if (video.readyState >= 2) {
+          try {
+            const results = await detector.detect(video);
+            if (results.length > 0) {
+              onDecoded(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
+              return;
+            }
+          } catch {}
+        }
+        state.frame = requestAnimationFrame(tick);
+      };
+      state.frame = requestAnimationFrame(tick);
+      return;
+    }
+
+    // Fallback: html5-qrcode
+    const hqId = `lcc-hq-${Date.now()}`;
+    const hqDiv = document.createElement('div');
+    hqDiv.id = hqId;
+    hqDiv.style.cssText = 'width:100%;height:100%;position:absolute;inset:0';
+    vidWrap.insertBefore(hqDiv, vfSvg);
+    video.remove(); // html5-qrcode manages its own video
     try {
       await loadScanner();
-      const host = document.createElement('div');
-      host.id = `lcc-scan-${Date.now()}`;
-      const size = Math.min(window.innerWidth * 0.88, 400);
-      host.style.cssText = [
-        'position:fixed', 'z-index:99999', 'background:#000', 'border-radius:12px', 'overflow:hidden',
-        `width:${size}px`, `height:${size}px`,
-        'top:50%', 'left:50%', 'transform:translate(-50%,-50%)',
-        'box-shadow:0 8px 40px rgba(0,0,0,.6)',
-      ].join(';');
-      document.body.appendChild(host);
-      this._scannerEl = host;
       // eslint-disable-next-line no-undef
-      const scanner = new Html5Qrcode(host.id);
-      this._scanner = scanner;
-      const qrbox = Math.round(size * 0.65);
-      await scanner.start(
+      const hq = new Html5Qrcode(hqId);
+      const origCleanup = cleanup;
+      this._scanner = {
+        cleanup: () => { hq.stop().catch(() => {}); origCleanup(); },
+      };
+      const qbox = Math.round(Math.min(window.innerWidth * 0.88, 380) * 0.65);
+      await hq.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: qrbox, height: qrbox } },
+        { fps: 10, qrbox: { width: qbox, height: qbox } },
         (decoded, result) => {
-          const input = overlay.querySelector('#card-barcode');
-          if (input) input.value = decoded;
-          // Auto-set detected format
-          const fmtNum = result?.result?.format?.format;
           const fmtName = result?.result?.format?.formatName;
-          const detectedType = fmtName && BARCODE_TYPES.includes(fmtName)
-            ? fmtName
-            : (HTML5QR_FORMAT[fmtNum] || detectBarcodeType(decoded));
-          const sel = overlay.querySelector('#card-type');
-          if (sel) sel.value = detectedType;
-          this._stopScan(overlay);
+          onDecoded(decoded, (fmtName && BARCODE_TYPES.includes(fmtName)) ? fmtName : detectBarcodeType(decoded));
         }
       );
     } catch (e) {
-      scanArea.innerHTML = `<div style="padding:10px;color:#c62828;font-size:13px">Skener nelze spustit: ${e.message}</div>`;
+      cleanup();
+      scanArea.innerHTML = `<p style="color:#c62828;font-size:13px;margin:6px 0">Skener nelze spustit: ${esc(e.message)}</p>`;
     }
   }
 
   async _startFileScan(overlay) {
-    try {
-      await loadScanner();
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = 'image/*';
-      fileInput.style.display = 'none';
-      document.body.appendChild(fileInput);
-      fileInput.addEventListener('change', async () => {
-        const file = fileInput.files[0];
-        fileInput.remove();
-        if (!file) return;
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      fileInput.remove();
+      if (!file) return;
+
+      const setResult = (value, type) => {
+        const input = overlay.querySelector('#card-barcode');
+        if (input) input.value = value;
+        const sel = overlay.querySelector('#card-type');
+        if (sel) sel.value = type;
+      };
+
+      // Primary: BarcodeDetector
+      if ('BarcodeDetector' in window) {
         try {
+          const bitmap = await createImageBitmap(file);
           // eslint-disable-next-line no-undef
-          const decoded = await Html5Qrcode.scanFile(file, false);
-          const input = overlay.querySelector('#card-barcode');
-          if (input) input.value = decoded;
-          const sel = overlay.querySelector('#card-type');
-          if (sel) sel.value = detectBarcodeType(decoded);
+          const detector = new BarcodeDetector();
+          const results = await detector.detect(bitmap);
+          if (results.length > 0) {
+            setResult(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
+            return;
+          }
+          alert('Kód v obrázku nebyl nalezen.');
+          return;
         } catch (e) {
-          alert(`Kód v obrázku nebyl nalezen.\n${e?.message || e}`);
+          // fall through to html5-qrcode
+          console.warn('BarcodeDetector failed:', e);
         }
-      });
-      fileInput.click();
-    } catch (e) {
-      alert(`Chyba: ${e.message}`);
-    }
+      }
+
+      // Fallback: html5-qrcode static scanFile
+      try {
+        await loadScanner();
+        // eslint-disable-next-line no-undef
+        const decoded = await Html5Qrcode.scanFile(file, false);
+        setResult(decoded, detectBarcodeType(decoded));
+      } catch (e) {
+        alert(`Kód v obrázku nebyl nalezen.\n${e?.message || e}`);
+      }
+    });
+
+    fileInput.click();
+  }
+
+  _mapBarcodeDetectorFormat(format) {
+    const map = {
+      ean_13: 'EAN_13', ean_8: 'EAN_8', upc_a: 'UPC_A', upc_e: 'UPC_E',
+      code_128: 'CODE_128', code_39: 'CODE_39', itf: 'ITF',
+      qr_code: 'QR_CODE', data_matrix: 'DATA_MATRIX', pdf417: 'PDF_417', aztec: 'AZTEC',
+    };
+    return map[format?.toLowerCase()] || 'CODE_128';
   }
 
   async _stopScan(overlay) {
@@ -1548,7 +1666,11 @@ class LoyaltyCardsCard extends HTMLElement {
   }
 
   async _destroyScanner() {
-    if (this._scanner) { try { await this._scanner.stop(); } catch {} this._scanner = null; }
+    if (this._scanner) {
+      if (typeof this._scanner.cleanup === 'function') this._scanner.cleanup();
+      else if (typeof this._scanner.stop === 'function') { try { await this._scanner.stop(); } catch {} }
+      this._scanner = null;
+    }
     if (this._scannerEl) { this._scannerEl.remove(); this._scannerEl = null; }
   }
 
