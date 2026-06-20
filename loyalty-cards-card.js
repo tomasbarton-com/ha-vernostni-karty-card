@@ -211,7 +211,7 @@ const STYLES = /* css */`
   display: flex; flex-direction: column;
 }
 .modal-sheet.sheet-menu { max-height: 60vh; }
-.modal-sheet.sheet-tall { max-height: 96vh; }
+.modal-sheet.sheet-tall { max-height: 96vh; min-height: 82vh; }
 .modal-header {
   display: flex; align-items: center; gap: 8px; padding: 14px 10px 12px 14px;
   border-bottom: 1px solid var(--divider-color, #e0e0e0); flex-shrink: 0;
@@ -297,16 +297,11 @@ const STYLES = /* css */`
 .input-row { display: flex; gap: 8px; }
 .input-row .form-input { flex: 1; }
 
-/* ── Catalog searchable dropdown ── */
-.catalog-dropdown { position: relative; }
-.catalog-dropdown-list {
-  position: absolute; left: 0; right: 0; top: calc(100% + 4px);
-  background: var(--ha-card-background, #fff);
+/* ── Catalog inline search list ── */
+.catalog-list {
   border: 1px solid var(--divider-color, #e0e0e0); border-radius: 8px;
-  max-height: 260px; overflow-y: auto; z-index: 100;
-  box-shadow: 0 4px 16px rgba(0,0,0,.14); display: none; scrollbar-width: thin;
+  overflow-y: auto; flex: 1; margin-top: 4px; scrollbar-width: thin;
 }
-.catalog-dropdown-list.open { display: block; }
 .catalog-group-header {
   padding: 6px 10px 4px;
   font-size: 10px; font-weight: 600; text-transform: uppercase;
@@ -783,7 +778,7 @@ class LoyaltyCardsCard extends HTMLElement {
     const byCategory = {};
     for (const s of catalog.stores) (byCategory[s.category] = byCategory[s.category] || []).push(s);
 
-    const dropdownHTML = Object.entries(byCategory).map(([cat, stores]) => `
+    const listHTML = Object.entries(byCategory).map(([cat, stores]) => `
       <div class="catalog-group" data-cat="${cat}">
         <div class="catalog-group-header">${esc(labels[cat] || cat)}</div>
         ${stores.map(s => {
@@ -798,24 +793,22 @@ class LoyaltyCardsCard extends HTMLElement {
       </div>`).join('');
 
     const curColor = this._md.color || DEFAULT_COLORS[0];
-    return `<div class="modal-sheet sheet-tall">
+    return `<div class="modal-sheet sheet-tall" style="display:flex;flex-direction:column">
       <div class="modal-header">
         <span class="modal-title">Přidat obchod</span>
         <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
       </div>
-      <div class="modal-body">
-        ${dropdownHTML ? `<div class="form-field">
+      <div class="modal-body" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        ${listHTML ? `<div class="form-field" style="display:flex;flex-direction:column;flex:1;min-height:0">
           <label class="form-label">Vybrat z katalogu</label>
-          <div class="catalog-dropdown">
-            <input class="form-input" id="catalog-dropdown-input" placeholder="Hledat obchod…" autocomplete="off">
-            <div class="catalog-dropdown-list" id="catalog-dropdown-list">${dropdownHTML}</div>
-          </div>
+          <input class="form-input" id="catalog-search" placeholder="Hledat obchod…" autocomplete="off" style="flex-shrink:0">
+          <div class="catalog-list" id="catalog-list" style="flex:1;min-height:120px">${listHTML}</div>
         </div>` : ''}
-        <div class="form-field">
-          <label class="form-label">Název *</label>
+        <div class="form-field" style="flex-shrink:0;margin-top:12px">
+          <label class="form-label">Název (nebo vyber výše) *</label>
           <input class="form-input" id="store-name" placeholder="Vlastní název obchodu">
         </div>
-        <div class="form-field">
+        <div class="form-field" style="flex-shrink:0">
           <label class="form-label">Barva dlaždice</label>
           <div class="color-row">
             ${this._colorSwatches(curColor)}
@@ -1081,32 +1074,27 @@ class LoyaltyCardsCard extends HTMLElement {
       this._handleModalAction(el.dataset.action, el, overlay);
     });
 
-    // Catalog searchable dropdown
-    const dropInput = overlay.querySelector('#catalog-dropdown-input');
-    const dropList  = overlay.querySelector('#catalog-dropdown-list');
-    if (dropInput && dropList) {
-      dropInput.addEventListener('focus', () => dropList.classList.add('open'));
-      dropInput.addEventListener('blur',  () => setTimeout(() => dropList.classList.remove('open'), 150));
-      dropInput.addEventListener('input', () => {
-        const q = dropInput.value.toLowerCase();
-        dropList.classList.add('open');
-        // User is typing manually — clear any catalog binding
+    // Catalog inline search list
+    const catalogSearch = overlay.querySelector('#catalog-search');
+    const catalogList   = overlay.querySelector('#catalog-list');
+    if (catalogSearch && catalogList) {
+      catalogSearch.addEventListener('input', () => {
+        const q = catalogSearch.value.toLowerCase();
         this._md.storeKey = null;
-        dropList.querySelectorAll('.catalog-option').forEach(o => o.classList.remove('selected'));
-        dropList.querySelectorAll('.catalog-option').forEach(opt => {
+        this._md.storeCategory = null;
+        catalogList.querySelectorAll('.catalog-option').forEach(o => o.classList.remove('selected'));
+        catalogList.querySelectorAll('.catalog-option').forEach(opt => {
           opt.style.display = (opt.dataset.name || '').toLowerCase().includes(q) ? '' : 'none';
         });
-        dropList.querySelectorAll('.catalog-group').forEach(grp => {
+        catalogList.querySelectorAll('.catalog-group').forEach(grp => {
           grp.style.display = [...grp.querySelectorAll('.catalog-option')].some(o => o.style.display !== 'none') ? '' : 'none';
         });
       });
-      dropList.querySelectorAll('.catalog-option').forEach(opt => {
-        opt.addEventListener('mousedown', e => e.preventDefault());
+      catalogList.querySelectorAll('.catalog-option').forEach(opt => {
         opt.addEventListener('click', async () => {
-          dropList.querySelectorAll('.catalog-option').forEach(o => o.classList.remove('selected'));
+          catalogList.querySelectorAll('.catalog-option').forEach(o => o.classList.remove('selected'));
           opt.classList.add('selected');
-          dropInput.value = opt.dataset.name || '';
-          dropList.classList.remove('open');
+          catalogSearch.value = opt.dataset.name || '';
           const n = overlay.querySelector('#store-name');
           if (n) n.value = opt.dataset.name || '';
           this._md.storeKey      = opt.dataset.key      || null;
