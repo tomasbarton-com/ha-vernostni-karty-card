@@ -977,6 +977,14 @@ class LoyaltyCardsCard extends HTMLElement {
           <label class="form-label">Nahrát soubor</label>
           <input type="file" accept="image/*" id="logo-file" class="form-input">
         </div>
+        <div class="form-field" id="logo-bg-row" style="display:none">
+          <label class="form-label">Barva pozadí pod logem</label>
+          <div class="input-row" style="align-items:center;gap:10px">
+            <input type="color" id="logo-bg-color" value="#ffffff"
+              style="width:44px;height:34px;padding:2px 4px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;cursor:pointer">
+            <span style="font-size:13px;color:var(--secondary-text-color)">Sloučí barvu s průhledným PNG</span>
+          </div>
+        </div>
         ${logo ? `<button class="btn btn-danger btn-full" data-action="delete-logo">Smazat logo</button>` : ''}
       </div>
       <div class="modal-footer">
@@ -1073,6 +1081,16 @@ class LoyaltyCardsCard extends HTMLElement {
       e.stopPropagation();
       this._handleModalAction(el.dataset.action, el, overlay);
     });
+
+    // Logo file — show background color picker for PNG uploads
+    const logoFile = overlay.querySelector('#logo-file');
+    const logoBgRow = overlay.querySelector('#logo-bg-row');
+    if (logoFile && logoBgRow) {
+      logoFile.addEventListener('change', () => {
+        const f = logoFile.files[0];
+        logoBgRow.style.display = (f && f.type === 'image/png') ? '' : 'none';
+      });
+    }
 
     // Catalog inline search list
     const catalogSearch = overlay.querySelector('#catalog-search');
@@ -1383,9 +1401,35 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!store) return;
     const file = overlay.querySelector('#logo-file')?.files?.[0];
     if (!file) return alert('Vyber soubor.');
-    const data_url = await new Promise((res, rej) => {
-      const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
-    });
+
+    const bgColor = (file.type === 'image/png' && overlay.querySelector('#logo-bg-row')?.style.display !== 'none')
+      ? overlay.querySelector('#logo-bg-color')?.value
+      : null;
+
+    let data_url;
+    if (bgColor) {
+      data_url = await new Promise((res, rej) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = bgColor;
+          ctx.fillRect(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0);
+          res(c.toDataURL('image/png'));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('load')); };
+        img.src = url;
+      });
+    } else {
+      data_url = await new Promise((res, rej) => {
+        const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
+      });
+    }
+
     await this._callService('upload_logo', { store_id: store.id, data_url });
     this._closeModal();
   }
