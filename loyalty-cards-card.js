@@ -1495,9 +1495,9 @@ class LoyaltyCardsCard extends HTMLElement {
     document.body.appendChild(host);
     this._scannerEl = host;
 
-    const state = { stream: null, frame: null };
+    const state = { stream: null, timer: null };
     const cleanup = () => {
-      if (state.frame) { cancelAnimationFrame(state.frame); state.frame = null; }
+      if (state.timer) { clearTimeout(state.timer); state.timer = null; }
       if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
       host.remove();
       this._scannerEl = null;
@@ -1532,45 +1532,40 @@ class LoyaltyCardsCard extends HTMLElement {
       let detector;
       try {
         // eslint-disable-next-line no-undef
-        const supported = await BarcodeDetector.getSupportedFormats();
+        const formats = await BarcodeDetector.getSupportedFormats().catch(() => []);
         // eslint-disable-next-line no-undef
-        detector = new BarcodeDetector({ formats: supported });
+        detector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
       } catch {
         // eslint-disable-next-line no-undef
         detector = new BarcodeDetector();
       }
-      // Capture video frame to canvas — more compatible than passing video element directly
-      const offCanvas = document.createElement('canvas');
-      const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
       const tick = async () => {
         if (!document.body.contains(host)) return;
         if (video.readyState >= 2 && video.videoWidth > 0) {
-          if (offCanvas.width !== video.videoWidth) {
-            offCanvas.width = video.videoWidth;
-            offCanvas.height = video.videoHeight;
-          }
-          offCtx.drawImage(video, 0, 0);
           try {
-            const results = await detector.detect(offCanvas);
+            const bitmap = await createImageBitmap(video);
+            const results = await detector.detect(bitmap);
+            bitmap.close();
             if (results.length > 0) {
               onDecoded(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
               return;
             }
           } catch {}
         }
-        state.frame = requestAnimationFrame(tick);
+        state.timer = setTimeout(tick, 300);
       };
-      state.frame = requestAnimationFrame(tick);
+      state.timer = setTimeout(tick, 300);
       return;
     }
 
-    // Fallback: html5-qrcode
+    // Fallback: html5-qrcode — stop the getUserMedia stream first to avoid camera lock
+    if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+    video.remove();
     const hqId = `lcc-hq-${Date.now()}`;
     const hqDiv = document.createElement('div');
     hqDiv.id = hqId;
     hqDiv.style.cssText = 'width:100%;height:100%;position:absolute;inset:0';
     vidWrap.insertBefore(hqDiv, vfSvg);
-    video.remove(); // html5-qrcode manages its own video
     try {
       await loadScanner();
       // eslint-disable-next-line no-undef
@@ -1613,39 +1608,21 @@ class LoyaltyCardsCard extends HTMLElement {
         if (sel) sel.value = type;
       };
 
-      // Load file onto a canvas — universally supported, handles large gallery photos
-      const MAX_DIM = 1920;
-      let canvas;
-      try {
-        canvas = await new Promise((resolve, reject) => {
-          const img = new Image();
-          const url = URL.createObjectURL(file);
-          img.onload = () => {
-            URL.revokeObjectURL(url);
-            const scale = Math.min(1, MAX_DIM / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
-            const w = Math.round(img.naturalWidth * scale);
-            const h = Math.round(img.naturalHeight * scale);
-            const c = document.createElement('canvas');
-            c.width = w; c.height = h;
-            c.getContext('2d').drawImage(img, 0, 0, w, h);
-            resolve(c);
-          };
-          img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('load')); };
-          img.src = url;
-        });
-      } catch {
-        alert('Nepodařilo se načíst obrázek.');
-        return;
-      }
-
-      // Primary: BarcodeDetector — detect on canvas
+      // Primary: BarcodeDetector — load image and detect directly
       if ('BarcodeDetector' in window) {
         try {
+          const img = await new Promise((resolve, reject) => {
+            const el = new Image();
+            const url = URL.createObjectURL(file);
+            el.onload = () => { URL.revokeObjectURL(url); resolve(el); };
+            el.onerror = () => { URL.revokeObjectURL(url); reject(new Error('load')); };
+            el.src = url;
+          });
           // eslint-disable-next-line no-undef
-          const supported = await BarcodeDetector.getSupportedFormats();
+          const formats = await BarcodeDetector.getSupportedFormats().catch(() => []);
           // eslint-disable-next-line no-undef
-          const detector = new BarcodeDetector({ formats: supported });
-          const results = await detector.detect(canvas);
+          const detector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+          const results = await detector.detect(img);
           if (results.length > 0) {
             setResult(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
             return;
