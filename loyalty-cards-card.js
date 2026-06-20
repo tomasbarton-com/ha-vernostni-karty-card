@@ -1539,11 +1539,19 @@ class LoyaltyCardsCard extends HTMLElement {
         // eslint-disable-next-line no-undef
         detector = new BarcodeDetector();
       }
+      // Capture video frame to canvas — more compatible than passing video element directly
+      const offCanvas = document.createElement('canvas');
+      const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
       const tick = async () => {
         if (!document.body.contains(host)) return;
-        if (video.readyState >= 2) {
+        if (video.readyState >= 2 && video.videoWidth > 0) {
+          if (offCanvas.width !== video.videoWidth) {
+            offCanvas.width = video.videoWidth;
+            offCanvas.height = video.videoHeight;
+          }
+          offCtx.drawImage(video, 0, 0);
           try {
-            const results = await detector.detect(video);
+            const results = await detector.detect(offCanvas);
             if (results.length > 0) {
               onDecoded(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
               return;
@@ -1608,18 +1616,28 @@ class LoyaltyCardsCard extends HTMLElement {
       // Primary: BarcodeDetector
       if ('BarcodeDetector' in window) {
         try {
-          const bitmap = await createImageBitmap(file);
           // eslint-disable-next-line no-undef
-          const detector = new BarcodeDetector();
+          const supported = await BarcodeDetector.getSupportedFormats();
+          // eslint-disable-next-line no-undef
+          const detector = new BarcodeDetector({ formats: supported });
+          // Scale down large gallery photos so the detector can process them reliably
+          const MAX_DIM = 1920;
+          let bitmap = await createImageBitmap(file);
+          if (bitmap.width > MAX_DIM || bitmap.height > MAX_DIM) {
+            const scale = MAX_DIM / Math.max(bitmap.width, bitmap.height);
+            bitmap = await createImageBitmap(file, {
+              resizeWidth: Math.round(bitmap.width * scale),
+              resizeHeight: Math.round(bitmap.height * scale),
+              resizeQuality: 'medium',
+            });
+          }
           const results = await detector.detect(bitmap);
           if (results.length > 0) {
             setResult(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
             return;
           }
-          alert('Kód v obrázku nebyl nalezen.');
-          return;
+          // No barcode found — fall through to html5-qrcode before showing alert
         } catch (e) {
-          // fall through to html5-qrcode
           console.warn('BarcodeDetector failed:', e);
         }
       }
