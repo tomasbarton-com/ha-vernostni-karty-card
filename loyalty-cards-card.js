@@ -1469,10 +1469,6 @@ class LoyaltyCardsCard extends HTMLElement {
     const vidWrap = document.createElement('div');
     vidWrap.style.cssText = 'position:relative;width:min(88vw,380px);aspect-ratio:1;border-radius:14px;overflow:hidden;background:#111';
 
-    const video = document.createElement('video');
-    video.autoplay = true; video.playsInline = true; video.muted = true;
-    video.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
-
     const vfSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     vfSvg.setAttribute('viewBox', '0 0 100 100');
     vfSvg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
@@ -1490,45 +1486,57 @@ class LoyaltyCardsCard extends HTMLElement {
     closeBtn.textContent = 'Zavřít';
     closeBtn.style.cssText = 'padding:10px 32px;border-radius:20px;background:#fff;border:none;font-size:15px;cursor:pointer;font-family:sans-serif;font-weight:500';
 
-    vidWrap.appendChild(video); vidWrap.appendChild(vfSvg);
+    vidWrap.appendChild(vfSvg);
     host.appendChild(vidWrap); host.appendChild(statusEl); host.appendChild(closeBtn);
     document.body.appendChild(host);
     this._scannerEl = host;
 
-    const state = { stream: null, timer: null };
-    const cleanup = () => {
-      if (state.timer) { clearTimeout(state.timer); state.timer = null; }
-      if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+    const showScanError = (msg) => {
       host.remove();
       this._scannerEl = null;
       this._scanner = null;
-      const sa = overlay?.querySelector('#scan-area');
-      if (sa) sa.style.display = 'none';
+      scanArea.innerHTML = `<p style="color:#c62828;font-size:13px;margin:6px 0">${msg}</p>`;
     };
-    closeBtn.addEventListener('click', cleanup);
-    this._scanner = { cleanup };
-
-    // Open camera
-    try {
-      state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
-      video.srcObject = state.stream;
-      await video.play();
-    } catch (e) {
-      cleanup();
-      scanArea.innerHTML = `<p style="color:#c62828;font-size:13px;margin:6px 0">Kamera nedostupná: ${esc(e.message)}</p>`;
-      return;
-    }
 
     const onDecoded = (value, type) => {
       const input = overlay.querySelector('#card-barcode');
       if (input) input.value = value;
       const sel = overlay.querySelector('#card-type');
       if (sel) sel.value = type;
-      cleanup();
+      this._stopScan(overlay);
     };
 
-    // Primary: BarcodeDetector (Chrome/Android/iOS 17+)
+    // ── BarcodeDetector path (Chrome Android, iOS 17+) ────────────────────────
     if ('BarcodeDetector' in window) {
+      const video = document.createElement('video');
+      video.autoplay = true; video.playsInline = true; video.muted = true;
+      video.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0';
+      vidWrap.insertBefore(video, vfSvg);
+
+      const state = { stream: null, timer: null };
+      const cleanup = () => {
+        if (state.timer) { clearTimeout(state.timer); state.timer = null; }
+        if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+        host.remove();
+        this._scannerEl = null;
+        this._scanner = null;
+        const sa = overlay?.querySelector('#scan-area');
+        if (sa) sa.style.display = 'none';
+      };
+      closeBtn.addEventListener('click', cleanup);
+      this._scanner = { cleanup };
+
+      try {
+        state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+        video.srcObject = state.stream;
+        await video.play();
+      } catch (e) {
+        if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+        host.remove(); this._scannerEl = null; this._scanner = null;
+        showScanError(`Kamera nedostupná: ${esc(e.message)}`);
+        return;
+      }
+
       let detector;
       try {
         // eslint-disable-next-line no-undef
@@ -1539,13 +1547,12 @@ class LoyaltyCardsCard extends HTMLElement {
         // eslint-disable-next-line no-undef
         detector = new BarcodeDetector();
       }
+
       const tick = async () => {
         if (!document.body.contains(host)) return;
         if (video.readyState >= 2 && video.videoWidth > 0) {
           try {
-            const bitmap = await createImageBitmap(video);
-            const results = await detector.detect(bitmap);
-            bitmap.close();
+            const results = await detector.detect(video);
             if (results.length > 0) {
               onDecoded(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
               return;
@@ -1558,22 +1565,29 @@ class LoyaltyCardsCard extends HTMLElement {
       return;
     }
 
-    // Fallback: html5-qrcode — stop the getUserMedia stream first to avoid camera lock
-    if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
-    video.remove();
+    // ── html5-qrcode fallback (manages its own camera stream) ─────────────────
     const hqId = `lcc-hq-${Date.now()}`;
     const hqDiv = document.createElement('div');
     hqDiv.id = hqId;
     hqDiv.style.cssText = 'width:100%;height:100%;position:absolute;inset:0';
     vidWrap.insertBefore(hqDiv, vfSvg);
+
+    let hq;
+    const hqCleanup = () => {
+      if (hq) { hq.stop().catch(() => {}); hq = null; }
+      host.remove();
+      this._scannerEl = null;
+      this._scanner = null;
+      const sa = overlay?.querySelector('#scan-area');
+      if (sa) sa.style.display = 'none';
+    };
+    closeBtn.addEventListener('click', hqCleanup);
+    this._scanner = { cleanup: hqCleanup };
+
     try {
       await loadScanner();
       // eslint-disable-next-line no-undef
-      const hq = new Html5Qrcode(hqId);
-      const origCleanup = cleanup;
-      this._scanner = {
-        cleanup: () => { hq.stop().catch(() => {}); origCleanup(); },
-      };
+      hq = new Html5Qrcode(hqId);
       const qbox = Math.round(Math.min(window.innerWidth * 0.88, 380) * 0.65);
       await hq.start(
         { facingMode: 'environment' },
@@ -1584,8 +1598,8 @@ class LoyaltyCardsCard extends HTMLElement {
         }
       );
     } catch (e) {
-      cleanup();
-      scanArea.innerHTML = `<p style="color:#c62828;font-size:13px;margin:6px 0">Skener nelze spustit: ${esc(e.message)}</p>`;
+      hqCleanup();
+      showScanError(`Skener nelze spustit: ${esc(e.message)}`);
     }
   }
 
@@ -1632,7 +1646,7 @@ class LoyaltyCardsCard extends HTMLElement {
         }
       }
 
-      // Fallback: html5-qrcode — must use instance method, not static
+      // Fallback: html5-qrcode instance method (scanFileV2 preserves format)
       const tmpId = `lc-scan-${Date.now()}`;
       const tmpDiv = document.createElement('div');
       tmpDiv.id = tmpId;
@@ -1642,8 +1656,15 @@ class LoyaltyCardsCard extends HTMLElement {
         await loadScanner();
         // eslint-disable-next-line no-undef
         const scanner = new Html5Qrcode(tmpId, { verbose: false });
-        const decoded = await scanner.scanFile(file, false);
-        setResult(decoded, detectBarcodeType(decoded));
+        let decoded, fmtName;
+        if (typeof scanner.scanFileV2 === 'function') {
+          const res = await scanner.scanFileV2(file, false);
+          decoded = res.decodedText;
+          fmtName = res.result?.format?.formatName;
+        } else {
+          decoded = await scanner.scanFile(file, false);
+        }
+        setResult(decoded, (fmtName && BARCODE_TYPES.includes(fmtName)) ? fmtName : detectBarcodeType(decoded));
       } catch {
         alert('Kód v obrázku nebyl nalezen.');
       } finally {
