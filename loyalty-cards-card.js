@@ -392,6 +392,49 @@ details.advanced .advanced-body { padding-top: 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { width: 22px; height: 22px; border: 3px solid var(--divider-color, #e0e0e0); border-top-color: var(--primary-color, #1976d2); border-radius: 50%; animation: spin .7s linear infinite; }
 .error-banner { background: #ffebee; color: #b71c1c; padding: 12px 16px; font-size: 13px; margin: 12px; border-radius: 8px; }
+
+/* ── File-scan feedback popup ── */
+@keyframes popup-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popup-out { to   { opacity: 0; } }
+@keyframes scan-card-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes draw-circle  { from { stroke-dashoffset: 189; } to { stroke-dashoffset: 0; } }
+@keyframes draw-path    { to   { stroke-dashoffset: 0; } }
+.scan-fb-backdrop {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,.52);
+  display: flex; align-items: center; justify-content: center;
+  animation: popup-in .15s ease;
+}
+.scan-fb-card {
+  background: var(--ha-card-background, var(--card-background-color, #fff));
+  border-radius: 24px; padding: 36px 28px 28px;
+  width: min(300px, 88vw);
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  position: relative; box-shadow: 0 8px 32px rgba(0,0,0,.22);
+  animation: scan-card-in .2s ease;
+}
+.scan-fb-close {
+  position: absolute; top: 10px; right: 10px;
+  background: none; border: none; cursor: pointer;
+  color: var(--secondary-text-color, #9e9e9e); padding: 6px; border-radius: 50%;
+  font-size: 18px; line-height: 1; transition: background .15s;
+}
+.scan-fb-close:hover { background: var(--secondary-background-color, #f5f5f5); }
+.scan-fb-spinner {
+  width: 72px; height: 72px; border-radius: 50%;
+  border: 4px solid var(--divider-color, #e0e0e0);
+  border-top-color: var(--primary-color, #1976d2);
+  animation: spin .9s linear infinite;
+}
+.scan-fb-svg { width: 72px; height: 72px; overflow: visible; }
+.scan-fb-label {
+  font-size: 15px; font-weight: 500; color: var(--primary-text-color, #212121);
+  text-align: center; line-height: 1.4;
+}
+.scan-fb-sub {
+  font-size: 13px; color: #e53935;
+  text-align: center; line-height: 1.4; margin-top: -6px;
+}
 `;
 
 // ── Card element ──────────────────────────────────────────────────────────────
@@ -1658,6 +1701,73 @@ class LoyaltyCardsCard extends HTMLElement {
     }
   }
 
+  _showFileScanPopup() {
+    const root = this.shadowRoot.querySelector('.card-root');
+    const backdrop = document.createElement('div');
+    backdrop.className = 'scan-fb-backdrop';
+    backdrop.innerHTML = `
+      <div class="scan-fb-card">
+        <button class="scan-fb-close">✕</button>
+        <div id="spc-icon"><div class="scan-fb-spinner"></div></div>
+        <div class="scan-fb-label" id="spc-label">Rozpoznávám kód…</div>
+      </div>`;
+    root?.appendChild(backdrop);
+
+    let dismissed = false;
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
+      backdrop.style.animation = 'popup-out .2s ease forwards';
+      setTimeout(() => backdrop.remove(), 210);
+    };
+    backdrop.querySelector('.scan-fb-close').addEventListener('click', dismiss);
+    backdrop.addEventListener('click', e => { if (e.target === backdrop) dismiss(); });
+
+    const iconWrap = backdrop.querySelector('#spc-icon');
+    const labelEl  = backdrop.querySelector('#spc-label');
+
+    const showSuccess = () => {
+      iconWrap.innerHTML = `
+        <svg class="scan-fb-svg" viewBox="0 0 72 72" fill="none">
+          <circle cx="36" cy="36" r="30"
+            stroke="#4caf50" stroke-width="4"
+            stroke-dasharray="189" stroke-dashoffset="189"
+            style="animation:draw-circle .4s ease forwards"/>
+          <path d="M21 37 L32 48 L51 25"
+            stroke="#4caf50" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
+            stroke-dasharray="46" stroke-dashoffset="46"
+            style="animation:draw-path .35s .38s ease forwards"/>
+        </svg>`;
+      labelEl.textContent = 'Kód rozpoznán!';
+      setTimeout(dismiss, 1500);
+    };
+
+    const showError = (msg) => {
+      iconWrap.innerHTML = `
+        <svg class="scan-fb-svg" viewBox="0 0 72 72" fill="none">
+          <circle cx="36" cy="36" r="30"
+            stroke="#e53935" stroke-width="4"
+            stroke-dasharray="189" stroke-dashoffset="189"
+            style="animation:draw-circle .4s ease forwards"/>
+          <path d="M24 24 L48 48" stroke="#e53935" stroke-width="4" stroke-linecap="round"
+            stroke-dasharray="34" stroke-dashoffset="34"
+            style="animation:draw-path .3s .38s ease forwards"/>
+          <path d="M48 24 L24 48" stroke="#e53935" stroke-width="4" stroke-linecap="round"
+            stroke-dasharray="34" stroke-dashoffset="34"
+            style="animation:draw-path .3s .58s ease forwards"/>
+        </svg>`;
+      labelEl.textContent = 'Kód nenalezen';
+      if (msg) {
+        const sub = document.createElement('div');
+        sub.className = 'scan-fb-sub';
+        sub.textContent = msg;
+        backdrop.querySelector('.scan-fb-card').appendChild(sub);
+      }
+    };
+
+    return { showSuccess, showError, dismiss };
+  }
+
   async _startFileScan(overlay) {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -1669,6 +1779,11 @@ class LoyaltyCardsCard extends HTMLElement {
       const file = fileInput.files[0];
       fileInput.remove();
       if (!file) return;
+
+      const popup = this._showFileScanPopup();
+      const t0 = Date.now();
+      // Ensure "scanning" state is visible for at least 600 ms
+      const afterMin = (fn) => setTimeout(fn, Math.max(0, 600 - (Date.now() - t0)));
 
       const setResult = (value, type) => {
         const input = overlay.querySelector('#card-barcode');
@@ -1694,6 +1809,7 @@ class LoyaltyCardsCard extends HTMLElement {
           const results = await detector.detect(img);
           if (results.length > 0) {
             setResult(results[0].rawValue, this._mapBarcodeDetectorFormat(results[0].format));
+            afterMin(() => popup.showSuccess());
             return;
           }
         } catch (e) {
@@ -1720,8 +1836,9 @@ class LoyaltyCardsCard extends HTMLElement {
           decoded = await scanner.scanFile(file, false);
         }
         setResult(decoded, (fmtName && BARCODE_TYPES.includes(fmtName)) ? fmtName : detectBarcodeType(decoded));
+        afterMin(() => popup.showSuccess());
       } catch {
-        alert('Kód v obrázku nebyl nalezen.');
+        afterMin(() => popup.showError('Kód v obrázku nebyl nalezen.'));
       } finally {
         tmpDiv.remove();
       }
