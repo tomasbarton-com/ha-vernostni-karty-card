@@ -1923,8 +1923,19 @@ class LoyaltyCardsCard extends HTMLElement {
 
   async _checkLocationSuggestion(overlay, store) {
     const DBG = s => console.warn('[LCC-loc]', s);
-    if (!navigator.geolocation) { DBG('geolocation API not available'); return; }
-    if (!overlay.isConnected)   { DBG('overlay detached before GPS'); return; }
+
+    // Grab the slot immediately — if the function runs, user sees a brief indicator
+    const slot = overlay.querySelector('#loc-suggest-slot');
+    if (!slot) { DBG('slot #loc-suggest-slot not found in overlay'); return; }
+
+    if (!navigator.geolocation) {
+      DBG('geolocation API not available');
+      slot.innerHTML = '<div style="font-size:11px;padding:4px 16px;color:#e53935">📍 Poloha není dostupná (API chybí)</div>';
+      setTimeout(() => { slot.innerHTML = ''; }, 3000);
+      return;
+    }
+
+    slot.innerHTML = '<div style="font-size:11px;padding:4px 16px;color:var(--secondary-text-color,#9e9e9e)">📍 Zjišťuji polohu…</div>';
 
     let pos;
     try {
@@ -1933,26 +1944,34 @@ class LoyaltyCardsCard extends HTMLElement {
           timeout: 8000, maximumAge: 120000, enableHighAccuracy: false,
         })
       );
-    } catch (e) { DBG(`getCurrentPosition failed: code=${e.code} msg=${e.message}`); return; }
+    } catch (e) {
+      DBG(`getCurrentPosition failed: code=${e.code} msg=${e.message}`);
+      slot.innerHTML = `<div style="font-size:11px;padding:4px 16px;color:#e53935">📍 Poloha selhala (${e.code === 1 ? 'zamítnuta' : e.code === 3 ? 'timeout' : e.message})</div>`;
+      setTimeout(() => { slot.innerHTML = ''; }, 4000);
+      return;
+    }
 
-    if (!overlay.isConnected) { DBG('overlay detached after GPS'); return; }
+    if (!overlay.isConnected) { slot.innerHTML = ''; return; }
 
     const { latitude: lat, longitude: lon } = pos.coords;
     DBG(`position: ${lat.toFixed(5)}, ${lon.toFixed(5)}, acc=${pos.coords.accuracy}m`);
     const NEAR = 200;
 
     const nearby = (store.locations || []).filter(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR);
-    if (nearby.length) { DBG(`skipping – store already has location within ${NEAR}m`); return; }
+    if (nearby.length) {
+      DBG(`skipping – store already has location within ${NEAR}m`);
+      slot.innerHTML = '';
+      return;
+    }
 
     const ck = `lcc-loc-seen-${store.id}`;
     const cutoff = Date.now() - 86400000;
     const seen = JSON.parse(localStorage.getItem(ck) || '[]').filter(e => e.t > cutoff);
     if (seen.some(e => geoDistance(lat, lon, e.lat, e.lon) < NEAR)) {
-      DBG('skipping – banner already shown here within 24 h'); return;
+      DBG('skipping – banner already shown here within 24 h');
+      slot.innerHTML = '';
+      return;
     }
-
-    const slot = overlay.querySelector('#loc-suggest-slot');
-    if (!slot) return;
 
     const SECONDS = 10;
     slot.innerHTML = `
