@@ -1946,8 +1946,12 @@ class LoyaltyCardsCard extends HTMLElement {
       );
     } catch (e) {
       DBG(`getCurrentPosition failed: code=${e.code} msg=${e.message}`);
-      slot.innerHTML = `<div style="font-size:11px;padding:4px 16px;color:#e53935">📍 Poloha selhala (${e.code === 1 ? 'zamítnuta' : e.code === 3 ? 'timeout' : e.message})</div>`;
-      setTimeout(() => { slot.innerHTML = ''; }, 4000);
+      if (e.code === 1) {
+        slot.innerHTML = `<div style="font-size:12px;padding:8px 16px;color:var(--secondary-text-color,#757575);line-height:1.4">📍 Poloha zamítnuta — povolte přístup k poloze v nastavení prohlížeče</div>`;
+      } else {
+        slot.innerHTML = `<div style="font-size:11px;padding:4px 16px;color:#e53935">📍 Poloha nedostupná (${e.code === 3 ? 'timeout' : e.message})</div>`;
+      }
+      setTimeout(() => { slot.innerHTML = ''; }, 6000);
       return;
     }
 
