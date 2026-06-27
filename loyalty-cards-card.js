@@ -1921,6 +1921,19 @@ class LoyaltyCardsCard extends HTMLElement {
 
   // ── Location suggestion ──
 
+  _getLocationFromHass() {
+    const states = this._hass?.states;
+    if (!states) return null;
+    const candidates = Object.entries(states)
+      .filter(([, v]) => v.attributes.latitude != null && v.attributes.longitude != null && v.attributes.source_type === 'gps')
+      .sort((a, b) => new Date(b[1].last_updated) - new Date(a[1].last_updated));
+    if (!candidates.length) return null;
+    const userName = this._hass.user?.name?.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const match = userName && candidates.find(([k]) => k.toLowerCase().includes(userName));
+    const [, state] = match || candidates[0];
+    return { latitude: state.attributes.latitude, longitude: state.attributes.longitude };
+  }
+
   async _checkLocationSuggestion(overlay, store) {
     const DBG = s => console.warn('[LCC-loc]', s);
 
@@ -1928,37 +1941,45 @@ class LoyaltyCardsCard extends HTMLElement {
     const slot = overlay.querySelector('#loc-suggest-slot');
     if (!slot) { DBG('slot #loc-suggest-slot not found in overlay'); return; }
 
-    if (!navigator.geolocation) {
-      DBG('geolocation API not available');
-      slot.innerHTML = '<div style="font-size:11px;padding:4px 16px;color:#e53935">📍 Poloha není dostupná (API chybí)</div>';
-      setTimeout(() => { slot.innerHTML = ''; }, 3000);
-      return;
-    }
-
     slot.innerHTML = '<div style="font-size:11px;padding:4px 16px;color:var(--secondary-text-color,#9e9e9e)">📍 Zjišťuji polohu…</div>';
 
-    let pos;
-    try {
-      pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, {
-          timeout: 8000, maximumAge: 120000, enableHighAccuracy: false,
-        })
-      );
-    } catch (e) {
-      DBG(`getCurrentPosition failed: code=${e.code} msg=${e.message}`);
-      if (e.code === 1) {
-        slot.innerHTML = `<div style="font-size:12px;padding:8px 16px;color:var(--secondary-text-color,#757575);line-height:1.4">📍 Poloha zamítnuta — povolte přístup k poloze v nastavení prohlížeče</div>`;
-      } else {
-        slot.innerHTML = `<div style="font-size:11px;padding:4px 16px;color:#e53935">📍 Poloha nedostupná (${e.code === 3 ? 'timeout' : e.message})</div>`;
+    let lat, lon;
+
+    // Try browser geolocation first
+    if (navigator.geolocation) {
+      try {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, {
+            timeout: 8000, maximumAge: 120000, enableHighAccuracy: false,
+          })
+        );
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+        DBG(`browser GPS: ${lat.toFixed(5)}, ${lon.toFixed(5)}, acc=${pos.coords.accuracy}m`);
+      } catch (e) {
+        DBG(`getCurrentPosition failed: code=${e.code} msg=${e.message}`);
       }
-      setTimeout(() => { slot.innerHTML = ''; }, 6000);
-      return;
+    } else {
+      DBG('geolocation API not available');
+    }
+
+    // Fallback: read location from HA device_tracker entities (e.g. Companion App)
+    if (lat == null) {
+      const haPos = this._getLocationFromHass();
+      if (haPos) {
+        lat = haPos.latitude;
+        lon = haPos.longitude;
+        DBG(`HA device_tracker fallback: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+      } else {
+        DBG('no location available (browser denied + no HA device_tracker with GPS)');
+        slot.innerHTML = '';
+        return;
+      }
     }
 
     if (!overlay.isConnected) { slot.innerHTML = ''; return; }
 
-    const { latitude: lat, longitude: lon } = pos.coords;
-    DBG(`position: ${lat.toFixed(5)}, ${lon.toFixed(5)}, acc=${pos.coords.accuracy}m`);
+    DBG(`using position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
     const NEAR = 200;
 
     const nearby = (store.locations || []).filter(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR);
