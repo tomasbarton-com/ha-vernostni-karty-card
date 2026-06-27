@@ -1922,29 +1922,34 @@ class LoyaltyCardsCard extends HTMLElement {
   // ── Location suggestion ──
 
   async _checkLocationSuggestion(overlay, store) {
-    if (!navigator.geolocation) return;
-    if (!overlay.isConnected) return;
+    const DBG = s => console.warn('[LCC-loc]', s);
+    if (!navigator.geolocation) { DBG('geolocation API not available'); return; }
+    if (!overlay.isConnected)   { DBG('overlay detached before GPS'); return; }
 
     let pos;
     try {
       pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 60000 })
+        navigator.geolocation.getCurrentPosition(res, rej, {
+          timeout: 8000, maximumAge: 120000, enableHighAccuracy: false,
+        })
       );
-    } catch { return; }
+    } catch (e) { DBG(`getCurrentPosition failed: code=${e.code} msg=${e.message}`); return; }
 
-    if (!overlay.isConnected) return;
+    if (!overlay.isConnected) { DBG('overlay detached after GPS'); return; }
 
     const { latitude: lat, longitude: lon } = pos.coords;
-    const NEAR = 200; // metres — consider "same place"
+    DBG(`position: ${lat.toFixed(5)}, ${lon.toFixed(5)}, acc=${pos.coords.accuracy}m`);
+    const NEAR = 200;
 
-    // Don't suggest if any existing location is already nearby
-    if ((store.locations || []).some(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR)) return;
+    const nearby = (store.locations || []).filter(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR);
+    if (nearby.length) { DBG(`skipping – store already has location within ${NEAR}m`); return; }
 
-    // Don't suggest if we already offered here recently (24 h window)
     const ck = `lcc-loc-seen-${store.id}`;
     const cutoff = Date.now() - 86400000;
     const seen = JSON.parse(localStorage.getItem(ck) || '[]').filter(e => e.t > cutoff);
-    if (seen.some(e => geoDistance(lat, lon, e.lat, e.lon) < NEAR)) return;
+    if (seen.some(e => geoDistance(lat, lon, e.lat, e.lon) < NEAR)) {
+      DBG('skipping – banner already shown here within 24 h'); return;
+    }
 
     const slot = overlay.querySelector('#loc-suggest-slot');
     if (!slot) return;
