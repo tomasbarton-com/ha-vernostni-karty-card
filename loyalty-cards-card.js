@@ -73,6 +73,22 @@ const loadScanner   = () => Promise.resolve();
 
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+function geoDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1), Δλ = toRad(lon2 - lon1);
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function latLonToTile(lat, lon, zoom) {
+  const n = 2 ** zoom;
+  const xt = (lon + 180) / 360 * n;
+  const latR = lat * Math.PI / 180;
+  const yt = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * n;
+  return { x: Math.floor(xt), y: Math.floor(yt), px: Math.floor((xt % 1) * 256), py: Math.floor((yt % 1) * 256) };
+}
+
 function getLogoUrl(store) {
   return store.logo_url || null;
 }
@@ -392,6 +408,60 @@ details.advanced .advanced-body { padding-top: 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { width: 22px; height: 22px; border: 3px solid var(--divider-color, #e0e0e0); border-top-color: var(--primary-color, #1976d2); border-radius: 50%; animation: spin .7s linear infinite; }
 .error-banner { background: #ffebee; color: #b71c1c; padding: 12px 16px; font-size: 13px; margin: 12px; border-radius: 8px; }
+
+/* ── Location suggestion banner ── */
+@keyframes ticker-ring { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 94; } }
+.loc-suggest-wrap {
+  background: var(--primary-color, #1976d2);
+  color: #fff; border-radius: 12px; margin: 8px 16px;
+  padding: 10px 12px; display: flex; align-items: center; gap: 10px;
+  animation: scan-card-in .25s ease;
+}
+.loc-suggest-text { flex: 1; font-size: 13px; font-weight: 500; line-height: 1.35; }
+.loc-suggest-timer-ring { width: 36px; height: 36px; flex-shrink: 0; }
+.loc-suggest-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.loc-suggest-btn-ok {
+  background: #fff; color: var(--primary-color, #1976d2);
+  border: none; border-radius: 16px; padding: 5px 12px;
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  transition: filter .1s;
+}
+.loc-suggest-btn-ok:hover { filter: brightness(.92); }
+.loc-suggest-btn-no {
+  background: rgba(255,255,255,.22); color: #fff;
+  border: none; border-radius: 16px; padding: 5px 10px;
+  font-size: 13px; cursor: pointer; font-family: inherit;
+  transition: filter .1s;
+}
+.loc-suggest-btn-no:hover { filter: brightness(.85); }
+.loc-success-wrap {
+  border-radius: 12px; overflow: hidden; margin: 8px 16px;
+  border: 1px solid var(--divider-color, #e0e0e0);
+  animation: scan-card-in .2s ease;
+}
+.loc-map-container {
+  position: relative; width: 100%; height: 140px; overflow: hidden;
+  background: #d4e9d7;
+}
+.loc-map-tile {
+  position: absolute; width: 256px; height: 256px;
+  pointer-events: none; user-select: none;
+}
+.loc-map-pin {
+  position: absolute; font-size: 30px;
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
+}
+.loc-map-attr {
+  position: absolute; bottom: 2px; right: 4px;
+  font-size: 9px; color: rgba(0,0,0,.55); background: rgba(255,255,255,.75);
+  padding: 1px 3px; border-radius: 2px; pointer-events: none;
+}
+.loc-success-bar {
+  background: #e8f5e9; padding: 9px 14px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 500; color: #2e7d32;
+}
 
 /* ── File-scan feedback popup ── */
 @keyframes popup-in  { from { opacity: 0; } to { opacity: 1; } }
@@ -782,6 +852,7 @@ class LoyaltyCardsCard extends HTMLElement {
         <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
       </div>
       ${tabs}
+      <div id="loc-suggest-slot"></div>
       <div class="barcode-view">
         <div class="barcode-wrap" id="barcode-container" title="Klepnutím zobrazit přes celou obrazovku">
           <div class="spinner"></div>
@@ -1280,6 +1351,7 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!container) return;
     await this._renderBarcodeInElement(card, container, false);
     container.addEventListener('click', () => this._openFullscreenBarcode(card));
+    this._checkLocationSuggestion(overlay, store); // async, no await
   }
 
   async _renderBarcodeInElement(card, container, large = false) {
@@ -1845,6 +1917,111 @@ class LoyaltyCardsCard extends HTMLElement {
     });
 
     fileInput.click();
+  }
+
+  // ── Location suggestion ──
+
+  async _checkLocationSuggestion(overlay, store) {
+    if (!navigator.geolocation) return;
+    if (!overlay.isConnected) return;
+
+    let pos;
+    try {
+      pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 60000 })
+      );
+    } catch { return; }
+
+    if (!overlay.isConnected) return;
+
+    const { latitude: lat, longitude: lon } = pos.coords;
+    const NEAR = 200; // metres — consider "same place"
+
+    // Don't suggest if any existing location is already nearby
+    if ((store.locations || []).some(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR)) return;
+
+    // Don't suggest if we already offered here recently (24 h window)
+    const ck = `lcc-loc-seen-${store.id}`;
+    const cutoff = Date.now() - 86400000;
+    const seen = JSON.parse(localStorage.getItem(ck) || '[]').filter(e => e.t > cutoff);
+    if (seen.some(e => geoDistance(lat, lon, e.lat, e.lon) < NEAR)) return;
+
+    const slot = overlay.querySelector('#loc-suggest-slot');
+    if (!slot) return;
+
+    const SECONDS = 10;
+    slot.innerHTML = `
+      <div class="loc-suggest-wrap">
+        <span style="font-size:20px;flex-shrink:0">📍</span>
+        <span class="loc-suggest-text">Přiřadit obchod<br>do této lokace?</span>
+        <svg class="loc-suggest-timer-ring" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15" stroke="rgba(255,255,255,.3)" stroke-width="3" fill="none"/>
+          <circle cx="18" cy="18" r="15" stroke="#fff" stroke-width="3" fill="none"
+            stroke-dasharray="94" stroke-dashoffset="0"
+            style="transform:rotate(-90deg);transform-origin:18px 18px;animation:ticker-ring ${SECONDS}s linear forwards"
+            id="lc-ring"/>
+          <text id="lc-cnt" x="18" y="22.5" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">${SECONDS}</text>
+        </svg>
+        <div class="loc-suggest-actions">
+          <button class="loc-suggest-btn-no" id="lc-no">Ne</button>
+          <button class="loc-suggest-btn-ok" id="lc-ok">Přidat</button>
+        </div>
+      </div>`;
+
+    let remaining = SECONDS;
+    const ticker = setInterval(() => {
+      remaining--;
+      const cnt = slot.querySelector('#lc-cnt');
+      if (cnt) cnt.textContent = remaining;
+      if (remaining <= 0) { clearInterval(ticker); slot.innerHTML = ''; }
+    }, 1000);
+
+    const dismiss = (markSeen = false) => {
+      clearInterval(ticker);
+      slot.innerHTML = '';
+      if (markSeen) {
+        seen.push({ lat, lon, t: Date.now() });
+        localStorage.setItem(ck, JSON.stringify(seen));
+      }
+    };
+
+    slot.querySelector('#lc-no').addEventListener('click', () => dismiss(true));
+    slot.querySelector('#lc-ok').addEventListener('click', async () => {
+      clearInterval(ticker);
+      slot.innerHTML = '<div style="padding:10px 16px"><div class="spinner" style="margin:0 auto"></div></div>';
+      try {
+        await this._callService('add_location', { store_id: store.id, lat, lon });
+        await this._loadData();
+        seen.push({ lat, lon, t: Date.now() });
+        localStorage.setItem(ck, JSON.stringify(seen));
+        this._showLocationSuccess(slot, lat, lon);
+      } catch (e) {
+        slot.innerHTML = `<div class="error-banner" style="margin:6px 16px">Nepodařilo se přidat lokaci: ${esc(e.message)}</div>`;
+        setTimeout(() => { slot.innerHTML = ''; }, 4000);
+      }
+    });
+  }
+
+  _showLocationSuccess(slot, lat, lon) {
+    const { x, y, px, py } = latLonToTile(lat, lon, 16);
+    const tileUrl = `https://tile.openstreetmap.org/16/${x}/${y}.png`;
+    slot.innerHTML = `
+      <div class="loc-success-wrap">
+        <div class="loc-map-container">
+          <img class="loc-map-tile"
+            src="${tileUrl}"
+            style="left:calc(50% - ${px}px);top:calc(50% - ${py}px)"
+            crossorigin="anonymous">
+          <div class="loc-map-pin" style="left:50%;top:50%">📍</div>
+          <div class="loc-map-attr">© OpenStreetMap</div>
+        </div>
+        <div class="loc-success-bar">✅&nbsp; Lokace přidána</div>
+      </div>`;
+    setTimeout(() => {
+      slot.style.transition = 'opacity .4s';
+      slot.style.opacity = '0';
+      setTimeout(() => { slot.innerHTML = ''; slot.style.cssText = ''; }, 420);
+    }, 4000);
   }
 
   _mapBarcodeDetectorFormat(format) {
