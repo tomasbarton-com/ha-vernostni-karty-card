@@ -1980,7 +1980,7 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!overlay.isConnected) { slot.innerHTML = ''; return; }
 
     DBG(`using position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
-    const NEAR = 200;
+    const NEAR = 40;
 
     const nearby = (store.locations || []).filter(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR);
     if (nearby.length) {
