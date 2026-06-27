@@ -1153,6 +1153,7 @@ class LoyaltyCardsCard extends HTMLElement {
             <button class="btn btn-secondary" data-action="use-gps" title="Použít GPS polohu">📍</button>
           </div>
         </div>
+        <div id="loc-map-preview" style="margin-bottom:8px"></div>
         <button class="btn btn-primary btn-full" data-action="add-location">Přidat lokaci</button>
       </div>
       <div class="modal-footer">
@@ -1591,13 +1592,27 @@ class LoyaltyCardsCard extends HTMLElement {
   }
 
   async _doUseGps(overlay) {
-    if (!navigator.geolocation) return alert('GPS není dostupná.');
-    navigator.geolocation.getCurrentPosition(pos => {
-      const latEl = overlay.querySelector('#loc-lat');
-      const lonEl = overlay.querySelector('#loc-lon');
-      if (latEl) latEl.value = pos.coords.latitude.toFixed(6);
-      if (lonEl) lonEl.value = pos.coords.longitude.toFixed(6);
-    }, () => alert('Nepodařilo se získat polohu.'));
+    let lat, lon;
+    if (navigator.geolocation) {
+      try {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 60000, enableHighAccuracy: false })
+        );
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+      } catch (_) { /* fall through to HA fallback */ }
+    }
+    if (lat == null) {
+      const haPos = this._getLocationFromHass();
+      if (haPos) { lat = haPos.latitude; lon = haPos.longitude; }
+    }
+    if (lat == null) return alert('Nepodařilo se získat polohu.');
+    const latEl = overlay.querySelector('#loc-lat');
+    const lonEl = overlay.querySelector('#loc-lon');
+    if (latEl) latEl.value = lat.toFixed(6);
+    if (lonEl) lonEl.value = lon.toFixed(6);
+    const preview = overlay.querySelector('#loc-map-preview');
+    if (preview) this._renderMapPreview(preview, lat, lon);
   }
 
   async _doSaveSettings(overlay) {
@@ -1980,7 +1995,7 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!overlay.isConnected) { slot.innerHTML = ''; return; }
 
     DBG(`using position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
-    const NEAR = 40;
+    const NEAR = 20;
 
     const nearby = (store.locations || []).filter(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR);
     if (nearby.length) {
@@ -2051,21 +2066,40 @@ class LoyaltyCardsCard extends HTMLElement {
     });
   }
 
-  _showLocationSuccess(slot, lat, lon) {
+  _renderMapPreview(container, lat, lon) {
     const { x, y, px, py } = latLonToTile(lat, lon, 16);
     const tileUrl = `https://tile.openstreetmap.org/16/${x}/${y}.png`;
+    container.innerHTML = `
+      <div class="loc-map-container" style="border-radius:8px;border:1px solid var(--divider-color,#e0e0e0)">
+        <img class="loc-map-tile" src="${tileUrl}"
+          style="left:calc(50% - ${px}px);top:calc(50% - ${py}px)">
+        <div class="loc-map-pin" style="left:50%;top:50%">📍</div>
+        <div class="loc-map-attr">© OpenStreetMap</div>
+      </div>`;
+  }
+
+  _showLocationSuccess(slot, lat, lon) {
     slot.innerHTML = `
       <div class="loc-success-wrap">
         <div class="loc-map-container">
-          <img class="loc-map-tile"
-            src="${tileUrl}"
-            style="left:calc(50% - ${px}px);top:calc(50% - ${py}px)"
-            crossorigin="anonymous">
-          <div class="loc-map-pin" style="left:50%;top:50%">📍</div>
-          <div class="loc-map-attr">© OpenStreetMap</div>
         </div>
         <div class="loc-success-bar">✅&nbsp; Lokace přidána</div>
       </div>`;
+    const mapContainer = slot.querySelector('.loc-map-container');
+    const { x, y, px, py } = latLonToTile(lat, lon, 16);
+    const tileUrl = `https://tile.openstreetmap.org/16/${x}/${y}.png`;
+    const img = document.createElement('img');
+    img.className = 'loc-map-tile';
+    img.style.cssText = `left:calc(50% - ${px}px);top:calc(50% - ${py}px)`;
+    img.src = tileUrl;
+    const pin = document.createElement('div');
+    pin.className = 'loc-map-pin';
+    pin.style.cssText = 'left:50%;top:50%';
+    pin.textContent = '📍';
+    const attr = document.createElement('div');
+    attr.className = 'loc-map-attr';
+    attr.textContent = '© OpenStreetMap';
+    mapContainer.append(img, pin, attr);
     setTimeout(() => {
       slot.style.transition = 'opacity .4s';
       slot.style.opacity = '0';
