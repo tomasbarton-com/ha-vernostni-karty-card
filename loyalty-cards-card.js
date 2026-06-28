@@ -1149,7 +1149,7 @@ class LoyaltyCardsCard extends HTMLElement {
             <input class="form-input" id="loc-lon" placeholder="Lon" type="number" step="0.00001">
           </div>
           <div class="input-row" style="margin-bottom:8px">
-            <input class="form-input" id="loc-radius" placeholder="Poloměr v metrech (výchozí 300)" type="number">
+            <input class="form-input" id="loc-radius" placeholder="Poloměr v metrech (výchozí 40)" type="number">
             <button class="btn btn-secondary" data-action="use-gps" title="Použít GPS polohu">📍</button>
           </div>
         </div>
@@ -1576,7 +1576,7 @@ class LoyaltyCardsCard extends HTMLElement {
     if (isNaN(lat) || isNaN(lon)) return alert('Zadej platné souřadnice.');
     await this._callService('add_location', {
       store_id: store.id, lat, lon,
-      radius_m: parseInt(overlay.querySelector('#loc-radius')?.value) || 300,
+      radius_m: parseInt(overlay.querySelector('#loc-radius')?.value) || 40,
       label:    overlay.querySelector('#loc-label')?.value?.trim() || '',
     });
     await this._loadData();
@@ -1995,11 +1995,11 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!overlay.isConnected) { slot.innerHTML = ''; return; }
 
     DBG(`using position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
-    const NEAR = 20;
+    const DEFAULT_RADIUS = 40;
 
-    const nearby = (store.locations || []).filter(l => geoDistance(lat, lon, l.lat, l.lon) < NEAR);
+    const nearby = (store.locations || []).filter(l => geoDistance(lat, lon, l.lat, l.lon) < (l.radius_m || DEFAULT_RADIUS));
     if (nearby.length) {
-      DBG(`skipping – store already has location within ${NEAR}m`);
+      DBG(`skipping – store already has location within radius`);
       slot.innerHTML = '';
       return;
     }
@@ -2007,7 +2007,7 @@ class LoyaltyCardsCard extends HTMLElement {
     const ck = `lcc-loc-seen-${store.id}`;
     const cutoff = Date.now() - 86400000;
     const seen = JSON.parse(localStorage.getItem(ck) || '[]').filter(e => e.t > cutoff);
-    if (seen.some(e => geoDistance(lat, lon, e.lat, e.lon) < NEAR)) {
+    if (seen.some(e => geoDistance(lat, lon, e.lat, e.lon) < (e.r || DEFAULT_RADIUS))) {
       DBG('skipping – banner already shown here within 24 h');
       slot.innerHTML = '';
       return;
@@ -2049,7 +2049,7 @@ class LoyaltyCardsCard extends HTMLElement {
       clearInterval(ticker);
       slot.innerHTML = '';
       if (markSeen) {
-        seen.push({ lat, lon, t: Date.now() });
+        seen.push({ lat, lon, r: DEFAULT_RADIUS, t: Date.now() });
         localStorage.setItem(ck, JSON.stringify(seen));
       }
     };
@@ -2059,9 +2059,9 @@ class LoyaltyCardsCard extends HTMLElement {
       clearInterval(ticker);
       slot.innerHTML = '<div style="padding:10px 16px"><div class="spinner" style="margin:0 auto"></div></div>';
       try {
-        await this._callService('add_location', { store_id: store.id, lat, lon });
+        await this._callService('add_location', { store_id: store.id, lat, lon, radius_m: DEFAULT_RADIUS });
         await this._loadData();
-        seen.push({ lat, lon, t: Date.now() });
+        seen.push({ lat, lon, r: DEFAULT_RADIUS, t: Date.now() });
         localStorage.setItem(ck, JSON.stringify(seen));
         this._showLocationSuccess(slot, lat, lon);
       } catch (e) {
