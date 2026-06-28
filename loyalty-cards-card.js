@@ -2035,21 +2035,7 @@ class LoyaltyCardsCard extends HTMLElement {
       </div>`;
 
     const mapEl = slot.querySelector('#lc-map');
-    if (mapEl) {
-      const { x, y, px, py } = latLonToTile(lat, lon, 16);
-      const img = document.createElement('img');
-      img.className = 'loc-map-tile';
-      img.style.cssText = `left:calc(50% - ${px}px);top:calc(50% - ${py}px)`;
-      img.src = `https://tile.openstreetmap.org/16/${x}/${y}.png`;
-      const pin = document.createElement('div');
-      pin.className = 'loc-map-pin';
-      pin.style.cssText = 'left:50%;top:50%';
-      pin.textContent = '📍';
-      const attr = document.createElement('div');
-      attr.className = 'loc-map-attr';
-      attr.textContent = '© OpenStreetMap';
-      mapEl.append(img, pin, attr);
-    }
+    if (mapEl) this._fillMapTiles(mapEl, lat, lon);
 
     let remaining = SECONDS;
     const ticker = setInterval(() => {
@@ -2085,32 +2071,17 @@ class LoyaltyCardsCard extends HTMLElement {
     });
   }
 
-  _renderMapPreview(container, lat, lon) {
+  _fillMapTiles(mapContainer, lat, lon) {
     const { x, y, px, py } = latLonToTile(lat, lon, 16);
-    const tileUrl = `https://tile.openstreetmap.org/16/${x}/${y}.png`;
-    container.innerHTML = `
-      <div class="loc-map-container" style="border-radius:8px;border:1px solid var(--divider-color,#e0e0e0)">
-        <img class="loc-map-tile" src="${tileUrl}"
-          style="left:calc(50% - ${px}px);top:calc(50% - ${py}px)">
-        <div class="loc-map-pin" style="left:50%;top:50%">📍</div>
-        <div class="loc-map-attr">© OpenStreetMap</div>
-      </div>`;
-  }
-
-  _showLocationSuccess(slot, lat, lon) {
-    slot.innerHTML = `
-      <div class="loc-success-wrap">
-        <div class="loc-map-container">
-        </div>
-        <div class="loc-success-bar">✅&nbsp; Lokace přidána</div>
-      </div>`;
-    const mapContainer = slot.querySelector('.loc-map-container');
-    const { x, y, px, py } = latLonToTile(lat, lon, 16);
-    const tileUrl = `https://tile.openstreetmap.org/16/${x}/${y}.png`;
-    const img = document.createElement('img');
-    img.className = 'loc-map-tile';
-    img.style.cssText = `left:calc(50% - ${px}px);top:calc(50% - ${py}px)`;
-    img.src = tileUrl;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const img = document.createElement('img');
+        img.className = 'loc-map-tile';
+        img.style.cssText = `left:calc(50% + ${dx * 256 - px}px);top:calc(50% + ${dy * 256 - py}px)`;
+        img.src = `https://tile.openstreetmap.org/16/${x + dx}/${y + dy}.png`;
+        mapContainer.appendChild(img);
+      }
+    }
     const pin = document.createElement('div');
     pin.className = 'loc-map-pin';
     pin.style.cssText = 'left:50%;top:50%';
@@ -2118,7 +2089,25 @@ class LoyaltyCardsCard extends HTMLElement {
     const attr = document.createElement('div');
     attr.className = 'loc-map-attr';
     attr.textContent = '© OpenStreetMap';
-    mapContainer.append(img, pin, attr);
+    mapContainer.append(pin, attr);
+  }
+
+  _renderMapPreview(container, lat, lon) {
+    const mapEl = document.createElement('div');
+    mapEl.className = 'loc-map-container';
+    mapEl.style.cssText = 'border-radius:8px;border:1px solid var(--divider-color,#e0e0e0)';
+    this._fillMapTiles(mapEl, lat, lon);
+    container.innerHTML = '';
+    container.appendChild(mapEl);
+  }
+
+  _showLocationSuccess(slot, lat, lon) {
+    slot.innerHTML = `
+      <div class="loc-success-wrap">
+        <div class="loc-map-container" id="lcs-map"></div>
+        <div class="loc-success-bar">✅&nbsp; Lokace přidána</div>
+      </div>`;
+    this._fillMapTiles(slot.querySelector('#lcs-map'), lat, lon);
     setTimeout(() => {
       slot.style.transition = 'opacity .4s';
       slot.style.opacity = '0';
