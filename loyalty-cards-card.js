@@ -2013,24 +2013,43 @@ class LoyaltyCardsCard extends HTMLElement {
       return;
     }
 
-    const SECONDS = 10;
+    const SECONDS = 20;
     slot.innerHTML = `
-      <div class="loc-suggest-wrap">
-        <span style="font-size:20px;flex-shrink:0">📍</span>
-        <span class="loc-suggest-text">Přiřadit obchod<br>do této lokace?</span>
-        <svg class="loc-suggest-timer-ring" viewBox="0 0 36 36">
-          <circle cx="18" cy="18" r="15" stroke="rgba(255,255,255,.3)" stroke-width="3" fill="none"/>
-          <circle cx="18" cy="18" r="15" stroke="#fff" stroke-width="3" fill="none"
-            stroke-dasharray="94" stroke-dashoffset="0"
-            style="transform:rotate(-90deg);transform-origin:18px 18px;animation:ticker-ring ${SECONDS}s linear forwards"
-            id="lc-ring"/>
-          <text id="lc-cnt" x="18" y="22.5" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">${SECONDS}</text>
-        </svg>
-        <div class="loc-suggest-actions">
-          <button class="loc-suggest-btn-no" id="lc-no">Ne</button>
-          <button class="loc-suggest-btn-ok" id="lc-ok">Přidat</button>
+      <div class="loc-suggest-wrap" style="flex-direction:column;gap:0;padding:0;overflow:hidden">
+        <div class="loc-map-container" id="lc-map" style="height:120px"></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+          <span class="loc-suggest-text" style="flex:1">Přiřadit obchod<br>do této lokace?</span>
+          <svg class="loc-suggest-timer-ring" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15" stroke="rgba(255,255,255,.3)" stroke-width="3" fill="none"/>
+            <circle cx="18" cy="18" r="15" stroke="#fff" stroke-width="3" fill="none"
+              stroke-dasharray="94" stroke-dashoffset="0"
+              style="transform:rotate(-90deg);transform-origin:18px 18px;animation:ticker-ring ${SECONDS}s linear forwards"
+              id="lc-ring"/>
+            <text id="lc-cnt" x="18" y="22.5" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">${SECONDS}</text>
+          </svg>
+          <div class="loc-suggest-actions">
+            <button class="loc-suggest-btn-no" id="lc-no">Ne</button>
+            <button class="loc-suggest-btn-ok" id="lc-ok">Přidat</button>
+          </div>
         </div>
       </div>`;
+
+    const mapEl = slot.querySelector('#lc-map');
+    if (mapEl) {
+      const { x, y, px, py } = latLonToTile(lat, lon, 16);
+      const img = document.createElement('img');
+      img.className = 'loc-map-tile';
+      img.style.cssText = `left:calc(50% - ${px}px);top:calc(50% - ${py}px)`;
+      img.src = `https://tile.openstreetmap.org/16/${x}/${y}.png`;
+      const pin = document.createElement('div');
+      pin.className = 'loc-map-pin';
+      pin.style.cssText = 'left:50%;top:50%';
+      pin.textContent = '📍';
+      const attr = document.createElement('div');
+      attr.className = 'loc-map-attr';
+      attr.textContent = '© OpenStreetMap';
+      mapEl.append(img, pin, attr);
+    }
 
     let remaining = SECONDS;
     const ticker = setInterval(() => {
