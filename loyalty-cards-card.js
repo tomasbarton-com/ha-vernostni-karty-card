@@ -799,11 +799,7 @@ class LoyaltyCardsCard extends HTMLElement {
     overlay.addEventListener('click', e => { if (e.target === overlay) this._closeModal(); });
     this._bindModalEvents(overlay);
     if (this._modal === 'barcode') this._renderBarcodeInModal(overlay);
-    if (this._modal === 'edit-location') {
-      const mapEl = overlay.querySelector('#edit-loc-map');
-      const loc = this._findStore(this._md.storeId)?.locations?.[this._md.locationIdx];
-      if (mapEl && loc) this._renderMapPreview(mapEl, loc.lat, loc.lon);
-    }
+    if (this._modal === 'edit-location') this._initEditLocationMap(overlay);
     setTimeout(() => overlay.querySelector('input:not([type=hidden]), select, textarea')?.focus(), 60);
   }
 
@@ -1182,7 +1178,8 @@ class LoyaltyCardsCard extends HTMLElement {
         <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
       </div>
       <div class="modal-body">
-        <div id="edit-loc-map" style="margin-bottom:14px"></div>
+        <div id="edit-loc-map" style="margin-bottom:4px"></div>
+        <p style="font-size:11px;color:var(--secondary-text-color,#9e9e9e);margin:0 0 12px;text-align:center">Kliknutím na mapu přesuňte špendlík</p>
         <div class="form-field">
           <label class="form-label">Název</label>
           <input class="form-input" id="el-label" placeholder="Název lokace" value="${esc(loc.label || '')}">
@@ -1676,7 +1673,11 @@ class LoyaltyCardsCard extends HTMLElement {
     if (latEl) latEl.value = lat.toFixed(6);
     if (lonEl) lonEl.value = lon.toFixed(6);
     const mapEl = overlay.querySelector('#edit-loc-map');
-    if (mapEl) this._renderMapPreview(mapEl, lat, lon);
+    if (mapEl) {
+      this._renderMapPreview(mapEl, lat, lon);
+      const mc = mapEl.querySelector('.loc-map-container');
+      if (mc) mc.style.cursor = 'crosshair';
+    }
   }
 
   async _doUseGps(overlay) {
@@ -2178,6 +2179,44 @@ class LoyaltyCardsCard extends HTMLElement {
     attr.className = 'loc-map-attr';
     attr.textContent = '© OpenStreetMap';
     mapContainer.append(pin, attr);
+  }
+
+  _initEditLocationMap(overlay) {
+    const wrapper = overlay.querySelector('#edit-loc-map');
+    const loc = this._findStore(this._md.storeId)?.locations?.[this._md.locationIdx];
+    if (!wrapper || !loc) return;
+
+    const render = (lat, lon) => {
+      this._renderMapPreview(wrapper, lat, lon);
+      const mc = wrapper.querySelector('.loc-map-container');
+      if (mc) mc.style.cursor = 'crosshair';
+    };
+    render(loc.lat, loc.lon);
+
+    wrapper.addEventListener('click', e => {
+      const mc = wrapper.querySelector('.loc-map-container');
+      if (!mc) return;
+      const rect = mc.getBoundingClientRect();
+      const dx = e.clientX - rect.left - rect.width / 2;
+      const dy = e.clientY - rect.top - rect.height / 2;
+
+      const latEl = overlay.querySelector('#el-lat');
+      const lonEl = overlay.querySelector('#el-lon');
+      const curLat = parseFloat(latEl?.value);
+      const curLon = parseFloat(lonEl?.value);
+      if (isNaN(curLat) || isNaN(curLon)) return;
+
+      const zoom = 16, n = 2 ** zoom;
+      const { x: tx, y: ty, px, py } = latLonToTile(curLat, curLon, zoom);
+      const newTileX = tx + (px + dx) / 256;
+      const newTileY = ty + (py + dy) / 256;
+      const newLon = newTileX / n * 360 - 180;
+      const newLat = Math.atan(Math.sinh(Math.PI * (1 - 2 * newTileY / n))) * 180 / Math.PI;
+
+      if (latEl) latEl.value = newLat.toFixed(6);
+      if (lonEl) lonEl.value = newLon.toFixed(6);
+      render(newLat, newLon);
+    });
   }
 
   _renderMapPreview(container, lat, lon) {
