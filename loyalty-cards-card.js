@@ -799,6 +799,11 @@ class LoyaltyCardsCard extends HTMLElement {
     overlay.addEventListener('click', e => { if (e.target === overlay) this._closeModal(); });
     this._bindModalEvents(overlay);
     if (this._modal === 'barcode') this._renderBarcodeInModal(overlay);
+    if (this._modal === 'edit-location') {
+      const mapEl = overlay.querySelector('#edit-loc-map');
+      const loc = this._findStore(this._md.storeId)?.locations?.[this._md.locationIdx];
+      if (mapEl && loc) this._renderMapPreview(mapEl, loc.lat, loc.lon);
+    }
     setTimeout(() => overlay.querySelector('input:not([type=hidden]), select, textarea')?.focus(), 60);
   }
 
@@ -817,7 +822,8 @@ class LoyaltyCardsCard extends HTMLElement {
     if (name === 'add-card')   return this._modalAddCard();
     if (name === 'edit-card')  return this._modalEditCard();
     if (name === 'logo')       return this._modalLogo();
-    if (name === 'locations')  return this._modalLocations();
+    if (name === 'locations')     return this._modalLocations();
+    if (name === 'edit-location') return this._modalEditLocation();
     if (name === 'settings')   return this._modalSettings();
     return '';
   }
@@ -1134,10 +1140,11 @@ class LoyaltyCardsCard extends HTMLElement {
           ? `<p style="color:var(--secondary-text-color);font-size:13px">Žádné lokace.</p>`
           : locs.map((loc, i) => `
             <div class="location-item">
-              <div class="location-info">
+              <div class="location-info" style="cursor:pointer" data-action="edit-location" data-idx="${i}">
                 <div class="location-name">${esc(loc.label || `Lokace ${i+1}`)}</div>
-                <div class="location-coords">${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)} · ${loc.radius_m||300} m</div>
+                <div class="location-coords">${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)} · ${loc.radius_m||40} m</div>
               </div>
+              <button class="btn-icon" data-action="edit-location" data-idx="${i}" title="Upravit">${ICON.edit}</button>
               <button class="btn-icon" data-action="delete-location" data-idx="${i}">${ICON.trash}</button>
             </div>`).join('')}
         <hr style="border:none;border-top:1px solid var(--divider-color,#e0e0e0);margin:12px 0">
@@ -1158,6 +1165,44 @@ class LoyaltyCardsCard extends HTMLElement {
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-action="close-modal">Zavřít</button>
+      </div>
+    </div>`;
+  }
+
+  // ── Edit Location ──
+
+  _modalEditLocation() {
+    const store = this._findStore(this._md.storeId);
+    const idx   = this._md.locationIdx;
+    const loc   = store?.locations?.[idx];
+    if (!loc) return this._modalLocations();
+    return `<div class="modal-sheet">
+      <div class="modal-header">
+        <span class="modal-title">Upravit lokaci</span>
+        <button class="btn-icon" data-action="close-modal">${ICON.close}</button>
+      </div>
+      <div class="modal-body">
+        <div id="edit-loc-map" style="margin-bottom:14px"></div>
+        <div class="form-field">
+          <label class="form-label">Název</label>
+          <input class="form-input" id="el-label" placeholder="Název lokace" value="${esc(loc.label || '')}">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Poloměr (m)</label>
+          <input class="form-input" id="el-radius" type="number" min="10" value="${loc.radius_m || 40}">
+        </div>
+        <div class="form-field">
+          <label class="form-label">Souřadnice</label>
+          <div class="input-row" style="margin-bottom:8px">
+            <input class="form-input" id="el-lat" type="number" step="0.000001" value="${loc.lat.toFixed(6)}">
+            <input class="form-input" id="el-lon" type="number" step="0.000001" value="${loc.lon.toFixed(6)}">
+          </div>
+          <button class="btn btn-secondary btn-full" data-action="move-pin-gps">📍 Přesunout na moji polohu</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-action="back-to-locations">Zpět</button>
+        <button class="btn btn-primary" data-action="save-location-edit">Uložit</button>
       </div>
     </div>`;
   }
@@ -1330,9 +1375,13 @@ class LoyaltyCardsCard extends HTMLElement {
       case 'download-logo':    return this._doDownloadLogo(overlay);
       case 'upload-logo':      return this._doUploadLogo(overlay);
       case 'delete-logo':      return this._doDeleteLogo();
-      case 'add-location':     return this._doAddLocation(overlay);
-      case 'delete-location':  return this._doDeleteLocation(parseInt(el.dataset.idx));
-      case 'use-gps':          return this._doUseGps(overlay);
+      case 'add-location':        return this._doAddLocation(overlay);
+      case 'delete-location':     return this._doDeleteLocation(parseInt(el.dataset.idx));
+      case 'edit-location':       return this._openModal('edit-location', { storeId: this._md.storeId, locationIdx: parseInt(el.dataset.idx) });
+      case 'back-to-locations':   return this._openModal('locations', { storeId: this._md.storeId });
+      case 'save-location-edit':  return this._doSaveLocationEdit(overlay);
+      case 'move-pin-gps':        return this._doMovePinGps(overlay);
+      case 'use-gps':             return this._doUseGps(overlay);
       case 'save-settings':    return this._doSaveSettings(overlay);
       case 'do-backup':        return this._doBackup();
       case 'start-scan':       return this._startScan(overlay);
@@ -1589,6 +1638,45 @@ class LoyaltyCardsCard extends HTMLElement {
     await this._callService('delete_location', { store_id: store.id, location_index: idx });
     await this._loadData();
     this._openModal('locations', { storeId: store.id });
+  }
+
+  async _doSaveLocationEdit(overlay) {
+    const store = this._findStore(this._md.storeId);
+    const idx   = this._md.locationIdx;
+    if (!store || idx == null) return;
+    const lat    = parseFloat(overlay.querySelector('#el-lat')?.value);
+    const lon    = parseFloat(overlay.querySelector('#el-lon')?.value);
+    const radius = parseInt(overlay.querySelector('#el-radius')?.value) || 40;
+    const label  = overlay.querySelector('#el-label')?.value?.trim() || '';
+    if (isNaN(lat) || isNaN(lon)) return alert('Neplatné souřadnice.');
+    await this._callService('delete_location', { store_id: store.id, location_index: idx });
+    await this._callService('add_location', { store_id: store.id, lat, lon, radius_m: radius, label });
+    await this._loadData();
+    this._openModal('locations', { storeId: store.id });
+  }
+
+  async _doMovePinGps(overlay) {
+    let lat, lon;
+    if (navigator.geolocation) {
+      try {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 60000, enableHighAccuracy: false })
+        );
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+      } catch (_) {}
+    }
+    if (lat == null) {
+      const haPos = this._getLocationFromHass();
+      if (haPos) { lat = haPos.latitude; lon = haPos.longitude; }
+    }
+    if (lat == null) return alert('Nepodařilo se získat polohu.');
+    const latEl = overlay.querySelector('#el-lat');
+    const lonEl = overlay.querySelector('#el-lon');
+    if (latEl) latEl.value = lat.toFixed(6);
+    if (lonEl) lonEl.value = lon.toFixed(6);
+    const mapEl = overlay.querySelector('#edit-loc-map');
+    if (mapEl) this._renderMapPreview(mapEl, lat, lon);
   }
 
   async _doUseGps(overlay) {
