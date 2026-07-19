@@ -596,6 +596,7 @@ class LoyaltyCardsCard extends HTMLElement {
 
   _render() {
     this._destroyScanner();
+    this._lastContentRender = Date.now();
     const body = this._error
       ? `<div class="error-banner">⚠️ ${esc(this._error)}</div>`
       : `${this._buildHeader()}<div id="card-content">${this._buildContent()}</div>`;
@@ -604,6 +605,7 @@ class LoyaltyCardsCard extends HTMLElement {
   }
 
   _renderContent() {
+    this._lastContentRender = Date.now();
     const el = this.shadowRoot.querySelector('#card-content');
     if (el) el.innerHTML = this._buildContent();
   }
@@ -730,6 +732,14 @@ class LoyaltyCardsCard extends HTMLElement {
 
   _bindRootEvents() {
     this.shadowRoot.querySelector('.card-root')?.addEventListener('click', e => {
+      // Lazy nearby-stores refresh: if >60s since last render and no modal open,
+      // refresh content after the current action finishes
+      if (Date.now() - (this._lastContentRender || 0) > 60000) {
+        requestAnimationFrame(() => {
+          if (!this._modal && !this._searching) this._renderContent();
+        });
+      }
+
       const el = e.target.closest('[data-action]');
       if (!el) return;
       e.stopPropagation();
