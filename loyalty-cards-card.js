@@ -199,6 +199,7 @@ const STYLES = /* css */`
   font-size: 26px; font-weight: 700; margin-top: 8px;
 }
 .tile-name { font-size: 11px; font-weight: 500; text-align: center; word-break: break-word; line-height: 1.3; }
+.tile-dist { font-size: 10px; opacity: 0.75; margin-top: 2px; text-align: center; }
 
 .tile-count-badge {
   position: absolute; top: 4px; left: 5px;
@@ -638,7 +639,16 @@ class LoyaltyCardsCard extends HTMLElement {
         ? `<div class="empty-state"><span class="icon">🔍</span>Žádný obchod neodpovídá „${esc(this._searchQuery)}".</div>`
         : `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
     }
-    return filtered.map(({ label, stores }) => `
+    let nearbySection = '';
+    if (!this._searchQuery) {
+      const nearby = this._getNearbyStores(500);
+      if (nearby) {
+        nearbySection = `
+          <div class="cat-header">📍 Blízké obchody</div>
+          <div class="store-grid">${nearby.map(({ store, distM }) => this._buildTile(store, distM)).join('')}</div>`;
+      }
+    }
+    return nearbySection + filtered.map(({ label, stores }) => `
       <div class="cat-header">${esc(label)}</div>
       <div class="store-grid">${stores.map(s => this._buildTile(s)).join('')}</div>
     `).join('');
@@ -654,18 +664,29 @@ class LoyaltyCardsCard extends HTMLElement {
         ? `<div class="empty-state"><span class="icon">🔍</span>Žádný obchod neodpovídá „${esc(this._searchQuery)}".</div>`
         : `<div class="empty-state"><span class="icon">🏪</span>Zatím žádné věrnostní karty.<br>Přidej první pomocí + výše.</div>`;
     }
-    if (!this._activeCategory || !filtered.find(c => c.key === this._activeCategory)) {
-      this._activeCategory = filtered[0].key;
+    const nearby = !this._searchQuery ? this._getNearbyStores(500) : null;
+    const nearbyKey = '__nearby__';
+    const allCategories = nearby
+      ? [{ key: nearbyKey, label: '📍 Blízké', stores: nearby.map(n => n.store), nearby }, ...filtered]
+      : filtered;
+
+    if (!this._activeCategory || !allCategories.find(c => c.key === this._activeCategory)) {
+      this._activeCategory = allCategories[0].key;
     }
     const tabs = `<div class="cat-tabs">
-      ${filtered.map(({ key, label }) =>
+      ${allCategories.map(({ key, label }) =>
         `<button class="cat-tab${key === this._activeCategory ? ' active' : ''}" data-action="switch-category" data-cat="${key}">${esc(label)}</button>`
       ).join('')}
     </div>`;
-    const activeStores = filtered.find(c => c.key === this._activeCategory)?.stores || [];
+    const activeCat = allCategories.find(c => c.key === this._activeCategory);
+    const activeStores = activeCat?.stores || [];
     const grid = activeStores.length === 0
       ? `<div class="empty-state" style="padding:24px">Žádné obchody v této kategorii.</div>`
-      : `<div class="store-grid">${activeStores.map(s => this._buildTile(s)).join('')}</div>`;
+      : `<div class="store-grid">${
+          activeCat?.nearby
+            ? activeCat.nearby.map(({ store, distM }) => this._buildTile(store, distM)).join('')
+            : activeStores.map(s => this._buildTile(s)).join('')
+        }</div>`;
     return tabs + grid;
   }
 
@@ -679,7 +700,7 @@ class LoyaltyCardsCard extends HTMLElement {
 
   // ── Tile ──
 
-  _buildTile(store) {
+  _buildTile(store, distM = null) {
     const cards   = store.cards || [];
     const count   = cards.length;
     const color   = store.tile_color || '#1976d2';
@@ -690,6 +711,10 @@ class LoyaltyCardsCard extends HTMLElement {
       ? `<img class="tile-logo" src="${logo}" alt="${esc(store.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
     const initialsEl = `<div class="tile-initials" style="${logo ? 'display:none' : ''}">${store.name[0].toUpperCase()}</div>`;
+    const distLabel = distM != null
+      ? (distM < 1000 ? `${Math.round(distM)} m` : `${(distM / 1000).toFixed(1)} km`)
+      : '';
+    const distEl = distLabel ? `<span class="tile-dist">${distLabel}</span>` : '';
 
     return `
       <div class="store-tile${noCards ? ' no-cards' : ''}" data-action="open-barcode" data-id="${store.id}" style="background:${color}">
@@ -697,6 +722,7 @@ class LoyaltyCardsCard extends HTMLElement {
         <button class="tile-menu-btn" data-action="open-tile-menu" data-id="${store.id}" title="Možnosti">⋮</button>
         ${logoEl}${initialsEl}
         <span class="tile-name">${esc(store.name)}</span>
+        ${distEl}
       </div>`;
   }
 
@@ -760,6 +786,22 @@ class LoyaltyCardsCard extends HTMLElement {
     if (!store) return;
     if ((store.cards || []).length === 0) return this._openModal('add-card', { storeId });
     this._openModal('barcode', { storeId, tabIdx: 0 });
+  }
+
+  // ── Nearby stores ──
+
+  _getNearbyStores(maxDistM = 500) {
+    const pos = this._getLocationFromHass();
+    if (!pos) return null;
+    const { latitude: lat, longitude: lon } = pos;
+    const result = [];
+    for (const store of this._data?.stores || []) {
+      if (!(store.locations || []).length) continue;
+      const distM = Math.min(...store.locations.map(l => geoDistance(lat, lon, l.lat, l.lon)));
+      if (distM < maxDistM) result.push({ store, distM });
+    }
+    result.sort((a, b) => a.distM - b.distM);
+    return result.length ? result : null;
   }
 
   // ── Categorize ──
@@ -2041,47 +2083,35 @@ class LoyaltyCardsCard extends HTMLElement {
   async _checkLocationSuggestion(overlay, store) {
     const DBG = s => console.warn('[LCC-loc]', s);
 
-    // Grab the slot immediately — if the function runs, user sees a brief indicator
     const slot = overlay.querySelector('#loc-suggest-slot');
     if (!slot) { DBG('slot #loc-suggest-slot not found in overlay'); return; }
 
-    slot.innerHTML = '<div style="font-size:11px;padding:4px 16px;color:var(--secondary-text-color,#9e9e9e)">📍 Zjišťuji polohu…</div>';
+    // Find device_tracker entity for current user (Companion App)
+    const states = this._hass?.states;
+    if (!states) { slot.innerHTML = ''; return; }
+    const candidates = Object.entries(states)
+      .filter(([, v]) => v.attributes.latitude != null && v.attributes.longitude != null && v.attributes.source_type === 'gps')
+      .sort((a, b) => new Date(b[1].last_updated) - new Date(a[1].last_updated));
+    if (!candidates.length) { DBG('no GPS device_tracker found'); slot.innerHTML = ''; return; }
+    const userName = this._hass.user?.name?.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const [entityId] = (userName && candidates.find(([k]) => k.toLowerCase().includes(userName))) || candidates[0];
 
-    let lat, lon;
-
-    // Try browser geolocation first
-    if (navigator.geolocation) {
-      try {
-        const pos = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, {
-            timeout: 8000, maximumAge: 120000, enableHighAccuracy: false,
-          })
-        );
-        lat = pos.coords.latitude;
-        lon = pos.coords.longitude;
-        DBG(`browser GPS: ${lat.toFixed(5)}, ${lon.toFixed(5)}, acc=${pos.coords.accuracy}m`);
-      } catch (e) {
-        DBG(`getCurrentPosition failed: code=${e.code} msg=${e.message}`);
-      }
-    } else {
-      DBG('geolocation API not available');
-    }
-
-    // Fallback: read location from HA device_tracker entities (e.g. Companion App)
-    if (lat == null) {
-      const haPos = this._getLocationFromHass();
-      if (haPos) {
-        lat = haPos.latitude;
-        lon = haPos.longitude;
-        DBG(`HA device_tracker fallback: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
-      } else {
-        DBG('no location available (browser denied + no HA device_tracker with GPS)');
-        slot.innerHTML = '';
-        return;
-      }
+    // Request native location update from Companion App, then wait briefly
+    slot.innerHTML = '<div style="font-size:11px;padding:4px 16px;color:var(--secondary-text-color,#9e9e9e)">📍 Aktualizuji polohu…</div>';
+    try {
+      await this._hass.callService('homeassistant', 'update_entity', { entity_id: entityId });
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (e) {
+      DBG(`update_entity failed: ${e.message}`);
     }
 
     if (!overlay.isConnected) { slot.innerHTML = ''; return; }
+
+    const freshState = this._hass?.states?.[entityId];
+    const lat = freshState?.attributes?.latitude;
+    const lon = freshState?.attributes?.longitude;
+    if (lat == null || lon == null) { DBG('no position in device_tracker after update'); slot.innerHTML = ''; return; }
+    DBG(`position from ${entityId}: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
 
     DBG(`using position: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
     const DEFAULT_RADIUS = 40;
